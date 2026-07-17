@@ -30,7 +30,9 @@ test("Bento exposes its complete planning surface", async () => {
   assert.match(`${app}${layout}`, /bento-theme/);
   assert.match(styles, /\[data-theme="dark"\]/);
   assert.doesNotMatch(styles, /\.day-card:nth-child/);
-  assert.match(styles, /\.day-card\.today[^}]*background/);
+  assert.match(styles, /\.day-card \{[^}]*background: #fff;/);
+  assert.match(styles, /\.day-card\.today[^}]*background: #fff;/);
+  assert.match(styles, /\.month-weekdays[^}]*background: #efede9/);
   assert.doesNotMatch(styles, /\.meal-zone-heading > div\s*\{[^}]*background/);
   assert.match(layout, /openGraph/);
   assert.match(layout, /\/og\.png/);
