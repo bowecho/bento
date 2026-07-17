@@ -957,7 +957,6 @@ export function BentoApp({
               <div><strong>{variety.score}</strong><span>variety</span></div>
             </div>
             <div className="variety-copy">
-              <p className="eyebrow"><Sparkles size={13} /> Gentle guidance</p>
               <h3>{variety.total === 0 ? "A fresh week is ready" : variety.repeatedFoods === 0 ? "Lovely mix so far" : "A little room for variety"}</h3>
               <p>
                 {variety.total === 0
@@ -966,11 +965,6 @@ export function BentoApp({
                     ? `${variety.total} meal picks spread across ${variety.unique} ${variety.unique === 1 ? "food" : "foods"}, with usage kept nicely balanced.`
                     : `${variety.repeatedFoods} ${variety.repeatedFoods === 1 ? "food appears" : "foods appear"} much more often than the rest. You can keep them, or swap in something lower in the library.`}
               </p>
-            </div>
-            <div className="variety-legend">
-              <span><i className="sun" /> Breakfast</span>
-              <span><i className="berry" /> Snack</span>
-              <span><i className="leaf" /> Lunch</span>
             </div>
           </section>
 

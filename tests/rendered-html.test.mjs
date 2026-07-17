@@ -15,6 +15,7 @@ test("Bento exposes its complete planning surface", async () => {
   assert.match(app, /Food library/);
   assert.match(app, /Generate week/);
   assert.match(app, /Shopping list/);
+  assert.doesNotMatch(app, /Gentle guidance|variety-legend/);
   assert.match(app, /Import foods/);
   assert.match(app, /MonthPlanner/);
   assert.match(app, /application\/x-bento-food/);
