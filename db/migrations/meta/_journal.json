@@ -8,6 +8,13 @@
       "when": 1784311390842,
       "tag": "0000_light_manta",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1784323615190,
+      "tag": "0001_colossal_katie_power",
+      "breakpoints": true
     }
   ]
 }

@@ -2,8 +2,6 @@ import { asc } from "drizzle-orm";
 import { getDb } from "@/db";
 import { foodItem, mealPlanItem } from "@/db/schema";
 import {
-  CATEGORIES,
-  type Category,
   type DayPlan,
   type Food,
   type Plans,
@@ -11,10 +9,6 @@ import {
 
 function emptyDay(): DayPlan {
   return { breakfast: [], snack: [], lunch: [] };
-}
-
-function asCategory(value: string): value is Category {
-  return CATEGORIES.includes(value as Category);
 }
 
 export async function loadPlannerData() {
@@ -34,7 +28,6 @@ export async function loadPlannerData() {
   const foods: Food[] = foodRows.map((row) => ({
     id: row.id,
     name: row.name,
-    categories: row.categories.filter(asCategory),
     createdAt: row.createdAt.getTime(),
   }));
 

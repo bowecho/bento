@@ -5,7 +5,6 @@ export type CategoryKey = "breakfast" | "snack" | "lunch";
 export type Food = {
   id: string;
   name: string;
-  categories: Category[];
   createdAt: number;
 };
 

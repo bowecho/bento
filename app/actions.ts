@@ -7,13 +7,11 @@ import { getDb } from "@/db";
 import { foodItem, mealPlanItem } from "@/db/schema";
 import { loadPlannerData } from "@/lib/planner-data";
 
-const CategorySchema = z.enum(["Breakfast", "Snack", "Lunch"]);
 const CategoryKeySchema = z.enum(["breakfast", "snack", "lunch"]);
 const DateSchema = z.iso.date();
 
 const FoodInputSchema = z.object({
   name: z.string().trim().min(1).max(80),
-  categories: z.array(CategorySchema).min(1).max(3),
 });
 
 const PlanItemSchema = z.object({
@@ -22,15 +20,10 @@ const PlanItemSchema = z.object({
   foodId: z.uuid(),
 });
 
-function uniqueCategories(categories: string[]) {
-  return [...new Set(categories)];
-}
-
 function toFood(row: typeof foodItem.$inferSelect) {
   return {
     id: row.id,
     name: row.name,
-    categories: row.categories as ("Breakfast" | "Snack" | "Lunch")[],
     createdAt: row.createdAt.getTime(),
   };
 }
@@ -103,18 +96,7 @@ export async function importFoodsAction(
     for (const food of foods) {
       const key = food.name.toLowerCase();
       const existing = byName.get(key);
-      if (existing) {
-        const categories = uniqueCategories([
-          ...existing.categories,
-          ...food.categories,
-        ]);
-        const [updated] = await tx
-          .update(foodItem)
-          .set({ categories, updatedAt: new Date() })
-          .where(eq(foodItem.id, existing.id))
-          .returning();
-        if (updated) byName.set(key, updated);
-      } else {
+      if (!existing) {
         const [created] = await tx.insert(foodItem).values(food).returning();
         if (created) byName.set(key, created);
       }

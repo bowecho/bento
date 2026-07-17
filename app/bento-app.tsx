@@ -164,32 +164,23 @@ function FoodForm({
   onDelete,
 }: {
   food?: Food;
-  onSave: (name: string, categories: Category[]) => Promise<void>;
+  onSave: (name: string) => Promise<void>;
   onClose: () => void;
   onDelete?: () => void;
 }) {
   const [name, setName] = useState(food?.name ?? "");
-  const [categories, setCategories] = useState<Category[]>(food?.categories ?? ["Breakfast"]);
   const [saving, setSaving] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => inputRef.current?.focus(), []);
 
-  function toggle(category: Category) {
-    setCategories((current) =>
-      current.includes(category)
-        ? current.filter((item) => item !== category)
-        : [...current, category],
-    );
-  }
-
   async function submit(event: FormEvent) {
     event.preventDefault();
     const cleanName = name.trim();
-    if (!cleanName || categories.length === 0) return;
+    if (!cleanName) return;
     setSaving(true);
     try {
-      await onSave(cleanName, categories);
+      await onSave(cleanName);
     } finally {
       setSaving(false);
     }
@@ -212,26 +203,6 @@ function FoodForm({
           onChange={(event) => setName(event.target.value)}
           maxLength={80}
         />
-        <fieldset>
-          <legend className="field-label">Works for</legend>
-          <div className="category-choice-grid">
-            {CATEGORIES.map((category) => {
-              const active = categories.includes(category);
-              return (
-                <label key={category} className={`category-choice ${active ? "active" : ""}`}>
-                  <input
-                    type="checkbox"
-                    checked={active}
-                    onChange={() => toggle(category)}
-                  />
-                  <span className={`category-dot ${CATEGORY_COLOR[category]}`} />
-                  <span>{category}</span>
-                  {active && <Check size={16} />}
-                </label>
-              );
-            })}
-          </div>
-        </fieldset>
         <div className="modal-actions">
           {onDelete && (
             <button type="button" className="button text-danger" onClick={onDelete}>
@@ -240,7 +211,7 @@ function FoodForm({
           )}
           <span className="modal-action-spacer" />
           <button type="button" className="button secondary" onClick={onClose}>Cancel</button>
-          <button className="button primary" disabled={saving || !name.trim() || categories.length === 0}>
+          <button className="button primary" disabled={saving || !name.trim()}>
             {saving ? "Saving…" : food ? "Save changes" : "Add food"}
           </button>
         </div>
@@ -277,12 +248,6 @@ function FoodCard({
           <div className="food-card-topline">
             <strong>{food.name}</strong>
             {usage > 0 && <span className="usage-badge">{usage}× this week</span>}
-          </div>
-          <div className="food-categories" aria-label="Categories">
-            {food.categories.map((category) => (
-              <span key={category} className={`mini-dot ${CATEGORY_COLOR[category]}`} title={category} />
-            ))}
-            <span className="category-names">{food.categories.join(" · ")}</span>
           </div>
         </div>
       </div>
@@ -506,12 +471,12 @@ function BulkImport({ onImport, onClose }: { onImport: (text: string) => Promise
       <form className="form-stack" onSubmit={submit}>
         <div className="import-help">
           <Info size={17} />
-          <p>One food per line. Add categories after a comma or pipe. If omitted, the food will work for all three meals.</p>
+          <p>One food per line. Every food can be used in every meal.</p>
         </div>
         <div className="code-example">
-          <span>Blueberries | Breakfast, Snack, Lunch</span>
-          <span>Greek yogurt | Breakfast, Snack</span>
-          <span>Cucumber | Snack, Lunch</span>
+          <span>Blueberries</span>
+          <span>Greek yogurt</span>
+          <span>Cucumber</span>
         </div>
         <label className="upload-field">
           <Upload size={17} />
@@ -524,7 +489,7 @@ function BulkImport({ onImport, onClose }: { onImport: (text: string) => Promise
           className="text-area"
           value={text}
           onChange={(event) => setText(event.target.value)}
-          placeholder="Blueberries | Breakfast, Snack, Lunch"
+          placeholder={"Blueberries\nGreek yogurt\nCucumber"}
           rows={8}
         />
         <div className="modal-actions">
@@ -549,7 +514,6 @@ export function BentoApp({
   const [plans, setPlans] = useState<Plans>(initialPlans);
   const [cursor, setCursor] = useState(() => new Date());
   const [view, setView] = useState<PlannerView>("week");
-  const [filter, setFilter] = useState<"All" | Category>("All");
   const [search, setSearch] = useState("");
   const [foodModal, setFoodModal] = useState<"new" | Food>();
   const [bulkOpen, setBulkOpen] = useState(false);
@@ -582,10 +546,9 @@ export function BentoApp({
   const visibleFoods = useMemo(() => {
     const query = search.trim().toLowerCase();
     return foods
-      .filter((food) => filter === "All" || food.categories.includes(filter))
       .filter((food) => !query || food.name.toLowerCase().includes(query))
       .sort((a, b) => (weeklyUsage.get(a.id) ?? 0) - (weeklyUsage.get(b.id) ?? 0) || a.name.localeCompare(b.name));
-  }, [foods, filter, search, weeklyUsage]);
+  }, [foods, search, weeklyUsage]);
 
   const variety = useMemo(() => {
     const counts = [...weeklyUsage.values()];
@@ -613,7 +576,7 @@ export function BentoApp({
     setToast(message);
   }
 
-  async function saveFood(name: string, categories: Category[]) {
+  async function saveFood(name: string) {
     const duplicate = foods.find((food) => food.name.toLowerCase() === name.toLowerCase() && food.id !== (typeof foodModal === "object" ? foodModal.id : undefined));
     if (duplicate) {
       notify(`${duplicate.name} is already in your library.`);
@@ -621,11 +584,11 @@ export function BentoApp({
     }
     try {
       if (typeof foodModal === "object") {
-        const updated = await updateFoodAction(foodModal.id, { name, categories });
+        const updated = await updateFoodAction(foodModal.id, { name });
         setFoods((current) => current.map((food) => food.id === updated.id ? updated : food));
         notify(`${name} updated.`);
       } else {
-        const created = await createFoodAction({ name, categories });
+        const created = await createFoodAction({ name });
         setFoods((current) => [...current, created]);
         notify(`${name} added to your library.`);
       }
@@ -660,10 +623,6 @@ export function BentoApp({
   function addToMeal(date: Date, category: Category, foodId: string) {
     const food = foodsById.get(foodId);
     if (!food) return;
-    if (!food.categories.includes(category)) {
-      notify(`${food.name} isn’t marked for ${category.toLowerCase()}. Edit it to add that category.`);
-      return;
-    }
     const key = dateKey(date);
     const mealKey = CATEGORY_KEY[category];
     setPlans((current) => {
@@ -725,7 +684,7 @@ export function BentoApp({
       const need = Math.max(0, targets[mealKey] - nextDay[mealKey].length);
       if (need === 0) continue;
       const ranked = foods
-        .filter((food) => food.categories.includes(category) && !nextDay[mealKey].includes(food.id))
+        .filter((food) => !nextDay[mealKey].includes(food.id))
         .map((food) => ({
           food,
           score:
@@ -790,13 +749,10 @@ export function BentoApp({
   async function importFoods(text: string) {
     const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
     const parsed = lines.flatMap((line) => {
-      const delimiter = line.includes("|") ? "|" : line.includes(",") ? "," : null;
-      const pieces = delimiter ? line.split(delimiter).map((piece) => piece.trim()).filter(Boolean) : [line];
-      const name = pieces.shift()?.replace(/^"|"$/g, "").trim();
+      const legacyName = line.includes("|") ? line.split("|", 1)[0] : line;
+      const name = legacyName.replace(/^"|"$/g, "").trim();
       if (!name) return [];
-      const categoryText = pieces.join(",").toLowerCase();
-      const categories = CATEGORIES.filter((category) => categoryText.includes(category.toLowerCase()));
-      return [{ name, categories: categories.length > 0 ? [...categories] : [...CATEGORIES] }];
+      return [{ name }];
     });
     const existingNames = new Set(foods.map((food) => food.name.toLowerCase()));
     const added = new Set(parsed.filter((food) => !existingNames.has(food.name.toLowerCase())).map((food) => food.name.toLowerCase())).size;
@@ -897,17 +853,9 @@ export function BentoApp({
             {search && <button onClick={() => setSearch("")} aria-label="Clear search"><X size={14} /></button>}
           </div>
 
-          <div className="filter-row" role="group" aria-label="Filter food categories">
-            {(["All", ...CATEGORIES] as const).map((item) => (
-              <button key={item} className={filter === item ? "active" : ""} onClick={() => setFilter(item)}>
-                {item}
-              </button>
-            ))}
-          </div>
-
           <div className="touch-tip">
             <GripVertical size={14} />
-            <span>Drag a food into any matching meal.</span>
+            <span>Drag any food into any meal.</span>
           </div>
 
           <div className="food-list" data-testid="food-list">
