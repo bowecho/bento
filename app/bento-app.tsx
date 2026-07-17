@@ -12,9 +12,11 @@ import {
   Info,
   LayoutGrid,
   ListFilter,
+  Moon,
   Plus,
   Search,
   Sparkles,
+  Sun,
   Trash2,
   Upload,
   X,
@@ -865,6 +867,17 @@ export function BentoApp({
     ? niceWeekRange(weekDays)
     : cursor.toLocaleDateString("en-US", { month: "long", year: "numeric" });
 
+  function toggleTheme() {
+    const root = document.documentElement;
+    const nextTheme = root.dataset.theme === "dark" ? "light" : "dark";
+    root.dataset.theme = nextTheme;
+    try {
+      window.localStorage.setItem("bento-theme", nextTheme);
+    } catch {
+      // The visual toggle still works when browser storage is unavailable.
+    }
+  }
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -876,14 +889,18 @@ export function BentoApp({
           </div>
         </div>
         <div className="topbar-actions">
+          <button className="theme-toggle" onClick={toggleTheme} aria-label="Toggle color theme" title="Toggle color theme">
+            <Moon className="theme-moon" size={18} aria-hidden="true" />
+            <Sun className="theme-sun" size={19} aria-hidden="true" />
+          </button>
           <button className="button secondary shopping-button" onClick={() => setShoppingOpen(true)}>
             <ClipboardList size={17} />
             <span>Shopping list</span>
             {shoppingItems.length > 0 && <b>{shoppingItems.length}</b>}
           </button>
-          <button className="button primary" onClick={generateWeek} data-testid="generate-week">
+          <button className="button primary" onClick={generateWeek} data-testid="generate-week" aria-label="Generate week">
             <Sparkles size={17} />
-            Generate week
+            <span>Generate<span className="generate-week-word"> week</span></span>
           </button>
         </div>
       </header>
