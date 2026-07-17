@@ -25,6 +25,7 @@ test("Bento exposes its complete planning surface", async () => {
   assert.match(app, /Toggle color theme/);
   assert.match(`${app}${layout}`, /bento-theme/);
   assert.match(styles, /\[data-theme="dark"\]/);
+  assert.doesNotMatch(styles, /\.meal-zone-heading > div\s*\{[^}]*background/);
   assert.match(layout, /openGraph/);
   assert.match(layout, /\/og\.png/);
   assert.match(styles, /@media \(max-width: 620px\)/);
