@@ -252,14 +252,10 @@ function FoodForm({
 function FoodCard({
   food,
   usage,
-  selected,
-  onSelect,
   onEdit,
 }: {
   food: Food;
   usage: number;
-  selected: boolean;
-  onSelect: () => void;
   onEdit: () => void;
 }) {
   function startDrag(event: DragEvent<HTMLDivElement>) {
@@ -269,17 +265,13 @@ function FoodCard({
 
   return (
     <div
-      className={`food-card ${selected ? "selected" : ""}`}
+      className="food-card"
       draggable
       onDragStart={startDrag}
       data-testid={`food-${food.id}`}
+      aria-label={`Drag ${food.name} to a meal`}
     >
-      <button
-        className="food-card-main"
-        onClick={onSelect}
-        aria-pressed={selected}
-        aria-label={`${food.name}. ${selected ? "Selected" : "Select to add on touch devices"}`}
-      >
+      <div className="food-card-main">
         <GripVertical className="drag-handle" size={15} aria-hidden="true" />
         <div className="food-card-content">
           <div className="food-card-topline">
@@ -293,7 +285,7 @@ function FoodCard({
             <span className="category-names">{food.categories.join(" · ")}</span>
           </div>
         </div>
-      </button>
+      </div>
       <button
         className="food-edit"
         aria-label={`Edit ${food.name}`}
@@ -310,7 +302,6 @@ function MealZone({
   category,
   foodIds,
   foodsById,
-  selectedFood,
   onAdd,
   onRemove,
 }: {
@@ -318,13 +309,10 @@ function MealZone({
   category: Category;
   foodIds: string[];
   foodsById: Map<string, Food>;
-  selectedFood?: Food;
   onAdd: (foodId: string) => void;
   onRemove: (foodId: string) => void;
 }) {
   const [dragOver, setDragOver] = useState(false);
-  const canTapAdd = selectedFood?.categories.includes(category);
-  const selectedFoodName = selectedFood?.name ?? "selected food";
   const label = `${category} for ${date.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}`;
 
   function drop(event: DragEvent<HTMLDivElement>) {
@@ -350,24 +338,9 @@ function MealZone({
         <div>
           <span>{category}</span>
         </div>
-        <button
-          className="meal-add"
-          aria-label={canTapAdd ? `Add ${selectedFoodName} to ${label}` : `Select a ${category.toLowerCase()} food first`}
-          title={canTapAdd ? `Add ${selectedFoodName}` : `Select a ${category.toLowerCase()} food first`}
-          onClick={() => selectedFood && onAdd(selectedFood.id)}
-          disabled={!canTapAdd}
-        >
-          <Plus size={14} />
-        </button>
       </div>
       {foodIds.length === 0 ? (
-        <button
-          className="empty-meal"
-          onClick={() => selectedFood && onAdd(selectedFood.id)}
-          disabled={!canTapAdd}
-        >
-          {canTapAdd ? `Add ${selectedFoodName}` : "Drop food here"}
-        </button>
+        <div className="empty-meal">Drop food here</div>
       ) : (
         <div className="meal-items">
           {foodIds.map((foodId) => {
@@ -392,7 +365,6 @@ function WeekPlanner({
   days,
   plans,
   foodsById,
-  selectedFood,
   onAdd,
   onRemove,
   onGenerateDay,
@@ -400,7 +372,6 @@ function WeekPlanner({
   days: Date[];
   plans: Plans;
   foodsById: Map<string, Food>;
-  selectedFood?: Food;
   onAdd: (date: Date, category: Category, foodId: string) => void;
   onRemove: (date: Date, category: Category, foodId: string) => void;
   onGenerateDay: (date: Date) => void;
@@ -437,7 +408,6 @@ function WeekPlanner({
                   category={category}
                   foodIds={plan[CATEGORY_KEY[category]]}
                   foodsById={foodsById}
-                  selectedFood={selectedFood}
                   onAdd={(foodId) => onAdd(date, category, foodId)}
                   onRemove={(foodId) => onRemove(date, category, foodId)}
                 />
@@ -579,7 +549,6 @@ export function BentoApp({
   const [view, setView] = useState<PlannerView>("week");
   const [filter, setFilter] = useState<"All" | Category>("All");
   const [search, setSearch] = useState("");
-  const [selectedFoodId, setSelectedFoodId] = useState<string>();
   const [foodModal, setFoodModal] = useState<"new" | Food>();
   const [bulkOpen, setBulkOpen] = useState(false);
   const [shoppingOpen, setShoppingOpen] = useState(false);
@@ -595,7 +564,6 @@ export function BentoApp({
   const weekDays = useMemo(() => getWeek(cursor), [cursor]);
   const weekKeys = useMemo(() => new Set(weekDays.map(dateKey)), [weekDays]);
   const foodsById = useMemo(() => new Map(foods.map((food) => [food.id, food])), [foods]);
-  const selectedFood = selectedFoodId ? foodsById.get(selectedFoodId) : undefined;
 
   const weeklyUsage = useMemo(() => {
     const counts = new Map<string, number>();
@@ -680,7 +648,6 @@ export function BentoApp({
         }
         return next;
       });
-      if (selectedFoodId === food.id) setSelectedFoodId(undefined);
       setDeleteCandidate(undefined);
       notify(`${food.name} removed.`);
     } catch (error) {
@@ -938,7 +905,7 @@ export function BentoApp({
 
           <div className="touch-tip">
             <GripVertical size={14} />
-            <span>Drag a food, or select it and use <Plus size={12} /> on a meal.</span>
+            <span>Drag a food into any matching meal.</span>
           </div>
 
           <div className="food-list" data-testid="food-list">
@@ -947,8 +914,6 @@ export function BentoApp({
                 key={food.id}
                 food={food}
                 usage={weeklyUsage.get(food.id) ?? 0}
-                selected={selectedFoodId === food.id}
-                onSelect={() => setSelectedFoodId((current) => current === food.id ? undefined : food.id)}
                 onEdit={() => setFoodModal(food)}
               />
             ))}
@@ -1007,20 +972,11 @@ export function BentoApp({
             </div>
           </section>
 
-          {selectedFood && (
-            <div className="selection-banner">
-              <span><Check size={15} /> <strong>{selectedFood.name}</strong> selected</span>
-              <span>Use the + in an eligible meal to add it.</span>
-              <button onClick={() => setSelectedFoodId(undefined)}>Done</button>
-            </div>
-          )}
-
           {view === "week" ? (
             <WeekPlanner
               days={weekDays}
               plans={plans}
               foodsById={foodsById}
-              selectedFood={selectedFood}
               onAdd={addToMeal}
               onRemove={removeFromMeal}
               onGenerateDay={generateDay}
