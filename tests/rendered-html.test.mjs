@@ -19,6 +19,7 @@ test("Bento exposes its complete planning surface", async () => {
   assert.match(app, /MonthPlanner/);
   assert.match(app, /application\/x-bento-food/);
   assert.doesNotMatch(app, /className="meal-add"|selection-banner|Select to add on touch devices/);
+  assert.doesNotMatch(app, /Drop food here/);
   assert.match(page, /loadPlannerData/);
   assert.match(app, /createFoodAction/);
   assert.match(app, /Toggle color theme/);

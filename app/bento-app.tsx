@@ -332,6 +332,8 @@ function MealZone({
       }}
       onDragLeave={() => setDragOver(false)}
       onDrop={drop}
+      role="group"
+      aria-label={label}
       data-testid={`meal-${dateKey(date)}-${CATEGORY_KEY[category]}`}
     >
       <div className="meal-zone-heading">
@@ -340,7 +342,7 @@ function MealZone({
         </div>
       </div>
       {foodIds.length === 0 ? (
-        <div className="empty-meal">Drop food here</div>
+        <div className="empty-meal" aria-hidden="true" />
       ) : (
         <div className="meal-items">
           {foodIds.map((foodId) => {
