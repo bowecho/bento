@@ -346,7 +346,6 @@ function MealZone({
     >
       <div className="meal-zone-heading">
         <div>
-          <span className={`category-dot ${CATEGORY_COLOR[category]}`} />
           <span>{category}</span>
         </div>
         <button
@@ -490,7 +489,6 @@ function MonthPlanner({
                 {mealFoods.map(({ category, names }) =>
                   names.length > 0 ? (
                     <span key={category} className={`month-meal-line ${CATEGORY_COLOR[category]}`}>
-                      <i />
                       <span>{names.slice(0, 2).join(", ")}{names.length > 2 ? ` +${names.length - 2}` : ""}</span>
                     </span>
                   ) : null,
@@ -874,7 +872,7 @@ export function BentoApp({
           <div className="brand-mark" aria-hidden="true"><span /><span /><span /></div>
           <div>
             <strong>Bento</strong>
-            <span>Plan a happier week</span>
+            <span>Little meals, lots of love</span>
           </div>
         </div>
         <div className="topbar-actions">
@@ -894,7 +892,7 @@ export function BentoApp({
         <aside className="food-library">
           <div className="library-heading">
             <div>
-              <p className="eyebrow">Your building blocks</p>
+              <p className="eyebrow">Pack the week</p>
               <h1>Food library</h1>
             </div>
             <button className="square-add" onClick={() => setFoodModal("new")} aria-label="Add a food">
@@ -940,8 +938,8 @@ export function BentoApp({
             {visibleFoods.length === 0 && (
               <div className="library-empty">
                 <ListFilter size={22} />
-                <strong>No foods found</strong>
-                <span>Try another filter or add something new.</span>
+                <strong>{foods.length === 0 ? "Your bento box is empty" : "No foods found"}</strong>
+                <span>{foods.length === 0 ? "Add a first favorite and start packing." : "Try another filter or add something new."}</span>
               </div>
             )}
           </div>
