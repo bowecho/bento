@@ -325,7 +325,7 @@ Rules:
         sort: "price",
       },
       temperature: 0.35,
-      maxCompletionTokens: 2_000,
+      maxTokens: 2_000,
       stream: false,
     },
   });
@@ -394,7 +394,10 @@ export async function generateWeekMenuAction(
   try {
     return await generateWeekMenu(input);
   } catch (error) {
-    console.error("Bento week generation failed", error);
+    const errorSummary = error instanceof Error
+      ? `${error.name}: ${error.message}`
+      : "Unknown generation error";
+    console.error("Bento week generation failed:", errorSummary);
     const message = error instanceof Error && /^(Add |Bento |You’ve )/.test(error.message)
       ? error.message
       : "Bento couldn’t generate a week right now. Please try again.";
