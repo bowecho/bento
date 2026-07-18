@@ -13,6 +13,7 @@ import {
   LayoutGrid,
   ListFilter,
   Moon,
+  Palette,
   Plus,
   Search,
   Sparkles,
@@ -49,6 +50,28 @@ import {
   type Plans,
 } from "@/lib/planner-types";
 type PlannerView = "week" | "month";
+
+const COLOR_THEMES = [
+  { id: "ink", name: "Ink", description: "Black & white", swatches: ["#111111", "#707070", "#f4f4f4"] },
+  { id: "cobalt", name: "Cobalt", description: "Clear blue", swatches: ["#225ea8", "#74a9cf", "#eaf3fb"] },
+  { id: "ruby", name: "Ruby", description: "Confident red", swatches: ["#b72e3d", "#df7782", "#faecee"] },
+  { id: "evergreen", name: "Evergreen", description: "Deep green", swatches: ["#27704a", "#75aa8d", "#e8f3ed"] },
+  { id: "saffron", name: "Saffron", description: "Golden yellow", swatches: ["#a66a08", "#dbad55", "#faf2df"] },
+  { id: "amethyst", name: "Amethyst", description: "Rich purple", swatches: ["#7045a0", "#aa88c9", "#f1ebf7"] },
+  { id: "lagoon", name: "Lagoon", description: "Fresh teal", swatches: ["#18777a", "#69afb0", "#e7f4f3"] },
+  { id: "tangerine", name: "Tangerine", description: "Warm orange", swatches: ["#bd5b1d", "#e39768", "#fbefe7"] },
+  { id: "rosewood", name: "Rosewood", description: "Dusty pink", swatches: ["#a94468", "#d0829e", "#f8eaf0"] },
+  { id: "iris", name: "Iris", description: "Blue violet", swatches: ["#514fb0", "#8d8bd3", "#ececf9"] },
+  { id: "moss", name: "Moss", description: "Earthy olive", swatches: ["#65752d", "#a2ad6d", "#f0f2e5"] },
+  { id: "espresso", name: "Espresso", description: "Warm brown", swatches: ["#74513b", "#ad8970", "#f3ece7"] },
+] as const;
+
+type ColorTheme = (typeof COLOR_THEMES)[number]["id"];
+type DisplayMode = "light" | "dark";
+
+function isColorTheme(value: string | undefined): value is ColorTheme {
+  return COLOR_THEMES.some((theme) => theme.id === value);
+}
 
 const CATEGORY_KEY: Record<Category, CategoryKey> = {
   Breakfast: "breakfast",
@@ -154,6 +177,61 @@ function Modal({
         {children}
       </section>
     </div>
+  );
+}
+
+function ThemePicker({
+  selected,
+  mode,
+  onSelect,
+  onModeSelect,
+  onClose,
+}: {
+  selected: ColorTheme;
+  mode: DisplayMode;
+  onSelect: (theme: ColorTheme) => void;
+  onModeSelect: (mode: DisplayMode) => void;
+  onClose: () => void;
+}) {
+  return (
+    <Modal title="Choose a theme" eyebrow="Make Bento yours" onClose={onClose} size="wide">
+      <div className="theme-picker-intro">
+        <p className="theme-picker-copy">Choose an appearance and a color direction.</p>
+        <div className="theme-mode-control" role="group" aria-label="Appearance mode">
+          <button type="button" className={mode === "light" ? "active" : ""} onClick={() => onModeSelect("light")} aria-pressed={mode === "light"}>
+            <Sun size={14} aria-hidden="true" /> Light
+          </button>
+          <button type="button" className={mode === "dark" ? "active" : ""} onClick={() => onModeSelect("dark")} aria-pressed={mode === "dark"}>
+            <Moon size={14} aria-hidden="true" /> Dark
+          </button>
+        </div>
+      </div>
+      <div className="theme-grid" role="radiogroup" aria-label="Bento color themes">
+        {COLOR_THEMES.map((theme) => {
+          const active = selected === theme.id;
+          return (
+            <button
+              key={theme.id}
+              type="button"
+              className={`theme-option ${active ? "active" : ""}`}
+              role="radio"
+              aria-checked={active}
+              onClick={() => onSelect(theme.id)}
+              style={{
+                "--swatch-one": theme.swatches[0],
+                "--swatch-two": theme.swatches[1],
+                "--swatch-three": theme.swatches[2],
+              } as React.CSSProperties}
+            >
+              <span className="theme-swatch" aria-hidden="true"><i /><i /><i /></span>
+              <span className="theme-option-copy"><strong>{theme.name}</strong><small>{theme.description}</small></span>
+              <span className="theme-check" aria-hidden="true">{active && <Check size={14} />}</span>
+            </button>
+          );
+        })}
+      </div>
+      <div className="modal-actions"><button className="button primary" onClick={onClose}>Done</button></div>
+    </Modal>
   );
 }
 
@@ -518,6 +596,16 @@ export function BentoApp({
   const [foodModal, setFoodModal] = useState<"new" | Food>();
   const [bulkOpen, setBulkOpen] = useState(false);
   const [shoppingOpen, setShoppingOpen] = useState(false);
+  const [themePickerOpen, setThemePickerOpen] = useState(false);
+  const [displayMode, setDisplayMode] = useState<DisplayMode>(() => {
+    if (typeof document === "undefined") return "light";
+    return document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+  });
+  const [colorTheme, setColorTheme] = useState<ColorTheme>(() => {
+    if (typeof document === "undefined") return "ink";
+    const current = document.documentElement.dataset.palette;
+    return isColorTheme(current) ? current : "ink";
+  });
   const [deleteCandidate, setDeleteCandidate] = useState<Food>();
   const [toast, setToast] = useState<string>();
 
@@ -792,14 +880,23 @@ export function BentoApp({
     ? niceWeekRange(weekDays)
     : cursor.toLocaleDateString("en-US", { month: "long", year: "numeric" });
 
-  function toggleTheme() {
-    const root = document.documentElement;
-    const nextTheme = root.dataset.theme === "dark" ? "light" : "dark";
-    root.dataset.theme = nextTheme;
+  function selectDisplayMode(nextMode: DisplayMode) {
+    document.documentElement.dataset.theme = nextMode;
+    setDisplayMode(nextMode);
     try {
-      window.localStorage.setItem("bento-theme", nextTheme);
+      window.localStorage.setItem("bento-theme", nextMode);
     } catch {
-      // The visual toggle still works when browser storage is unavailable.
+      // The appearance selection still works when browser storage is unavailable.
+    }
+  }
+
+  function selectColorTheme(nextTheme: ColorTheme) {
+    document.documentElement.dataset.palette = nextTheme;
+    setColorTheme(nextTheme);
+    try {
+      window.localStorage.setItem("bento-color-theme", nextTheme);
+    } catch {
+      // Theme selection still works when browser storage is unavailable.
     }
   }
 
@@ -814,9 +911,8 @@ export function BentoApp({
           </div>
         </div>
         <div className="topbar-actions">
-          <button className="theme-toggle" onClick={toggleTheme} aria-label="Toggle color theme" title="Toggle color theme">
-            <Moon className="theme-moon" size={18} aria-hidden="true" />
-            <Sun className="theme-sun" size={19} aria-hidden="true" />
+          <button className="theme-toggle palette-toggle" onClick={() => setThemePickerOpen(true)} aria-label="Choose theme and appearance" title="Choose theme and appearance">
+            <Palette size={18} aria-hidden="true" />
           </button>
           <button className="button secondary shopping-button" onClick={() => setShoppingOpen(true)}>
             <ClipboardList size={17} />
@@ -934,6 +1030,16 @@ export function BentoApp({
           </p>
         </main>
       </div>
+
+      {themePickerOpen && (
+        <ThemePicker
+          selected={colorTheme}
+          mode={displayMode}
+          onSelect={selectColorTheme}
+          onModeSelect={selectDisplayMode}
+          onClose={() => setThemePickerOpen(false)}
+        />
+      )}
 
       {foodModal && (
         <FoodForm

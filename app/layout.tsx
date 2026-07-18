@@ -8,12 +8,16 @@ const themeScript = `
 (() => {
   try {
     const stored = window.localStorage.getItem("bento-theme");
+    const storedPalette = window.localStorage.getItem("bento-color-theme");
+    const palettes = ["ink", "cobalt", "ruby", "evergreen", "saffron", "amethyst", "lagoon", "tangerine", "rosewood", "iris", "moss", "espresso"];
     const theme = stored === "light" || stored === "dark"
       ? stored
       : window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
     document.documentElement.dataset.theme = theme;
+    document.documentElement.dataset.palette = palettes.includes(storedPalette) ? storedPalette : "ink";
   } catch {
     document.documentElement.dataset.theme = "light";
+    document.documentElement.dataset.palette = "ink";
   }
 })();`;
 
