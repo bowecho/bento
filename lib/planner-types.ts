@@ -5,6 +5,8 @@ export type CategoryKey = "breakfast" | "snack" | "lunch";
 export type Food = {
   id: string;
   name: string;
+  pairsWellWith: string;
+  avoidPairingWith: string;
   createdAt: number;
 };
 

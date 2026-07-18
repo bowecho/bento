@@ -28,6 +28,8 @@ export async function loadPlannerData() {
   const foods: Food[] = foodRows.map((row) => ({
     id: row.id,
     name: row.name,
+    pairsWellWith: row.pairsWellWith,
+    avoidPairingWith: row.avoidPairingWith,
     createdAt: row.createdAt.getTime(),
   }));
 

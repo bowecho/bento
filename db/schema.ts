@@ -22,6 +22,8 @@ export const foodItem = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     name: text("name").notNull(),
+    pairsWellWith: text("pairs_well_with").notNull().default(""),
+    avoidPairingWith: text("avoid_pairing_with").notNull().default(""),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

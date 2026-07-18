@@ -14,6 +14,8 @@ const DateSchema = z.iso.date();
 
 const FoodInputSchema = z.object({
   name: z.string().trim().min(1).max(80),
+  pairsWellWith: z.string().trim().max(300).default(""),
+  avoidPairingWith: z.string().trim().max(300).default(""),
 });
 
 const PlanItemSchema = z.object({
@@ -36,6 +38,14 @@ const GeneratedDaySchema = z.object({
 });
 const GeneratedWeekSchema = z.object({
   days: z.array(GeneratedDaySchema).length(7),
+});
+const CompatibilityReviewSchema = z.object({
+  approved: z.boolean(),
+  issues: z.array(z.object({
+    date: DateSchema,
+    category: CategoryKeySchema,
+    reason: z.string().trim().min(1).max(200),
+  })).max(21),
 });
 
 const WEEK_GENERATION_MODEL = "google/gemini-2.5-flash";
@@ -113,6 +123,31 @@ function generatedWeekJsonSchema(
   };
 }
 
+function compatibilityReviewJsonSchema(dates: string[]) {
+  return {
+    type: "object",
+    properties: {
+      approved: { type: "boolean" },
+      issues: {
+        type: "array",
+        maxItems: 21,
+        items: {
+          type: "object",
+          properties: {
+            date: { type: "string", enum: dates },
+            category: { type: "string", enum: ["breakfast", "snack", "lunch"] },
+            reason: { type: "string", minLength: 1, maxLength: 200 },
+          },
+          required: ["date", "category", "reason"],
+          additionalProperties: false,
+        },
+      },
+    },
+    required: ["approved", "issues"],
+    additionalProperties: false,
+  };
+}
+
 function validateGeneratedWeek(
   content: string,
   dates: string[],
@@ -163,6 +198,41 @@ function validateGeneratedWeek(
   return { plans, rows };
 }
 
+function violatesExplicitPairingGuidance(
+  plans: Record<string, { breakfast: string[]; snack: string[]; lunch: string[] }>,
+  dates: string[],
+  foodById: Map<string, { id: string; name: string; avoidPairingWith: string }>,
+) {
+  const categories = ["breakfast", "snack", "lunch"] as const;
+
+  for (const date of dates) {
+    const day = plans[date];
+    for (const category of categories) {
+      const mealFoods = day[category]
+        .map((id) => foodById.get(id))
+        .filter((food): food is NonNullable<typeof food> => Boolean(food));
+
+      for (const food of mealFoods) {
+        const avoided = food.avoidPairingWith
+          .split(/[,;\n]+/)
+          .map((value) => value.trim().toLowerCase())
+          .filter(Boolean);
+        if (avoided.length === 0) continue;
+
+        for (const other of mealFoods) {
+          if (other.id === food.id) continue;
+          const otherName = other.name.trim().toLowerCase();
+          if (avoided.some((value) => value === otherName || value.includes(otherName) || otherName.includes(value))) {
+            return true;
+          }
+        }
+      }
+    }
+  }
+
+  return false;
+}
+
 async function enforceGenerationRateLimit() {
   const requestHeaders = await headers();
   const forwardedFor =
@@ -194,6 +264,8 @@ function toFood(row: typeof foodItem.$inferSelect) {
   return {
     id: row.id,
     name: row.name,
+    pairsWellWith: row.pairsWellWith,
+    avoidPairingWith: row.avoidPairingWith,
     createdAt: row.createdAt.getTime(),
   };
 }
@@ -323,7 +395,12 @@ async function generateWeekMenu(
   }
 
   const foods = await db
-    .select({ id: foodItem.id, name: foodItem.name })
+    .select({
+      id: foodItem.id,
+      name: foodItem.name,
+      pairsWellWith: foodItem.pairsWellWith,
+      avoidPairingWith: foodItem.avoidPairingWith,
+    })
     .from(foodItem)
     .orderBy(asc(foodItem.name));
 
@@ -339,10 +416,17 @@ async function generateWeekMenu(
   const tokenToFood = new Map<string, (typeof foods)[number]>(
     foods.map((food, index) => [`food_${index + 1}`, food] as const),
   );
+  const foodById = new Map(foods.map((food) => [food.id, food]));
   const foodTokens = [...tokenToFood.keys()];
   const maxFoodsPerMeal = Math.max(1, Math.min(3, Math.floor(foods.length / 6)));
   const foodList = [...tokenToFood.entries()]
-    .map(([token, food]) => `${token}: ${food.name}`)
+    .map(([token, food]) => {
+      const guidance = [
+        food.pairsWellWith ? `pairs well with: ${food.pairsWellWith}` : "",
+        food.avoidPairingWith ? `do not pair with: ${food.avoidPairingWith}` : "",
+      ].filter(Boolean);
+      return `${token}: ${food.name}${guidance.length > 0 ? ` | ${guidance.join(" | ")}` : ""}`;
+    })
     .join("\n");
 
   const openRouter = await getOpenRouterClient();
@@ -373,6 +457,9 @@ Rules:
 - Use 1 to ${maxFoodsPerMeal} ${maxFoodsPerMeal === 1 ? "food" : "foods"} per meal. Do not exceed this limit. Snacks should usually be lighter than breakfast or lunch.
 - Choose foods appropriate for that meal and that make sense together based only on their names.
 - It is okay to leave some available foods unused. Prefer repeating a meal-appropriate food after a one-day gap over placing a food in an awkward meal just for coverage.
+- Prefer conventional children’s breakfast, snack, and lunchbox combinations. Do not invent a recipe to justify an unusual pairing.
+- Follow the parent’s pairing guidance. Never place foods together when either food says "do not pair with" the other.
+- If two foods might be fine individually but are questionable together, put them in separate meals or leave one unused.
 - Never use the same food more than once on the same day.
 - Never use a food on adjacent days. A food may repeat after at least one full day in between.
 - Before planning each day, exclude every food used on the immediately preceding day.
@@ -409,7 +496,85 @@ Rules:
     }
 
     try {
-      validated = validateGeneratedWeek(content, dates, tokenToFood);
+      const candidate = validateGeneratedWeek(content, dates, tokenToFood);
+      if (violatesExplicitPairingGuidance(candidate.plans, dates, foodById)) {
+        throw new InvalidGeneratedWeekError("Bento rejected a parent-defined food pairing. Please try again.");
+      }
+      const readableMenu = dates.map((date) => {
+        const day = candidate.plans[date];
+        const names = (category: "breakfast" | "snack" | "lunch") =>
+          day[category].map((id) => foodById.get(id)?.name ?? "Unknown").join(", ");
+        return `${date}\n  breakfast: ${names("breakfast")}\n  snack: ${names("snack")}\n  lunch: ${names("lunch")}`;
+      }).join("\n\n");
+
+      const reviewResponse = await openRouter.chat.send({
+        chatRequest: {
+          model: WEEK_GENERATION_MODEL,
+          messages: [
+            {
+              role: "system",
+              content:
+                "You are the final compatibility reviewer for a child’s weekly breakfast, snack, and lunch plan. Be practical and conservative. Reject awkward, invented, or unconventional food combinations before they reach the family.",
+            },
+            {
+              role: "user",
+              content: `Review this proposed menu for meal appropriateness and food compatibility.
+
+Proposed menu:
+${readableMenu}
+
+Food library and parent guidance:
+${foodList}
+
+Review rules:
+- Prefer conventional children’s breakfast, snack, and lunchbox choices.
+- Foods listed together within one meal should commonly taste good together without inventing a recipe.
+- Reject speculative combinations such as tortillas with chocolate chips unless the parent explicitly listed them under "pairs well with".
+- Any "do not pair with" guidance is authoritative and must cause rejection if those foods share a meal.
+- "Pairs well with" guidance is positive guidance, not a requirement to always combine those foods.
+- A single-food meal can be approved when that food is appropriate for the meal.
+- Do not reject foods merely because they are simple, packaged, or not nutritionally complete.
+- Set approved to true only when there are zero issues. Otherwise list every questionable meal with a concise reason.`,
+            },
+          ],
+          responseFormat: {
+            type: "json_schema",
+            jsonSchema: {
+              name: "bento_compatibility_review",
+              strict: true,
+              schema: compatibilityReviewJsonSchema(dates),
+            },
+          },
+          provider: {
+            requireParameters: true,
+            sort: "price",
+          },
+          temperature: 0.1,
+          maxTokens: 1_000,
+          stream: false,
+        },
+      });
+
+      if (!("choices" in reviewResponse)) {
+        throw new InvalidGeneratedWeekError("Bento couldn’t review that menu. Please try again.");
+      }
+      const reviewContent = reviewResponse.choices[0]?.message.content;
+      if (typeof reviewContent !== "string") {
+        throw new InvalidGeneratedWeekError("Bento couldn’t review that menu. Please try again.");
+      }
+
+      let review: z.infer<typeof CompatibilityReviewSchema>;
+      try {
+        review = CompatibilityReviewSchema.parse(JSON.parse(reviewContent));
+      } catch {
+        throw new InvalidGeneratedWeekError("Bento couldn’t review that menu. Please try again.");
+      }
+
+      if (!review.approved || review.issues.length > 0) {
+        throw new InvalidGeneratedWeekError("Bento rejected an unusual food combination. Please try again.");
+      }
+
+      validated = candidate;
       break;
     } catch (error) {
       if (!(error instanceof InvalidGeneratedWeekError) || attempt === MAX_GENERATION_ATTEMPTS - 1) {

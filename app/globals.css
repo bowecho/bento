@@ -177,6 +177,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [role="button
 .drag-handle { color: #b9b7b0; flex: 0 0 auto; }
 .food-card-content { min-width: 0; flex: 1; }
 .food-card-topline { display: flex; align-items: center; justify-content: space-between; gap: 5px; }
+.pairing-note { display: block; margin-top: 3px; color: var(--accent-strong); font-size: 9px; font-weight: 650; }
 .food-card strong { font-size: 12px; font-weight: 670; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .usage-badge { font-size: 8px; font-weight: 700; color: var(--accent-strong); background: var(--accent-soft); padding: 3px 5px; border-radius: 99px; white-space: nowrap; }
 .food-edit { width: 26px; height: 26px; border: 0; border-radius: 7px; background: transparent; color: #9a9f98; display: grid; place-items: center; cursor: pointer; opacity: 0; }
@@ -263,10 +264,13 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [role="button
 .modal-heading h2 { margin: 0; font-size: 23px; letter-spacing: -.04em; }
 .form-stack { display: flex; flex-direction: column; gap: 12px; }
 .field-label { display: block; margin: 0 0 -5px; font-size: 11px; font-weight: 700; color: #4c554d; }
+.field-label span { margin-left: 4px; color: var(--muted); font-size: 9px; font-weight: 500; text-transform: uppercase; letter-spacing: .04em; }
+.field-help { margin: -7px 1px 0; color: var(--muted); font-size: 10px; line-height: 1.4; }
 .text-input, .text-area { width: 100%; border: 1px solid var(--line); border-radius: 11px; background: white; color: var(--ink); outline: 0; }
 .text-input { height: 43px; padding: 0 12px; }
 .text-input-large { font-size: 15px; }
 .text-area { padding: 11px 12px; resize: vertical; line-height: 1.5; }
+.pairing-text-area { min-height: 66px; }
 .text-input:focus, .text-area:focus { border-color: var(--green); box-shadow: 0 0 0 3px rgba(49,95,75,.08); }
 .modal-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding-top: 10px; }
 .modal-action-spacer { flex: 1; }

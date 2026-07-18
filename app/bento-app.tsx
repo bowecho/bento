@@ -51,6 +51,7 @@ import {
   type Plans,
 } from "@/lib/planner-types";
 type PlannerView = "week" | "month";
+type FoodDetails = Pick<Food, "name" | "pairsWellWith" | "avoidPairingWith">;
 
 const COLOR_THEMES = [
   { id: "ink", name: "Ink", description: "Black & white", swatches: ["#111111", "#707070", "#f4f4f4"] },
@@ -243,11 +244,13 @@ function FoodForm({
   onDelete,
 }: {
   food?: Food;
-  onSave: (name: string) => Promise<void>;
+  onSave: (details: FoodDetails) => Promise<void>;
   onClose: () => void;
   onDelete?: () => void;
 }) {
   const [name, setName] = useState(food?.name ?? "");
+  const [pairsWellWith, setPairsWellWith] = useState(food?.pairsWellWith ?? "");
+  const [avoidPairingWith, setAvoidPairingWith] = useState(food?.avoidPairingWith ?? "");
   const [saving, setSaving] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -259,7 +262,11 @@ function FoodForm({
     if (!cleanName) return;
     setSaving(true);
     try {
-      await onSave(cleanName);
+      await onSave({
+        name: cleanName,
+        pairsWellWith: pairsWellWith.trim(),
+        avoidPairingWith: avoidPairingWith.trim(),
+      });
     } finally {
       setSaving(false);
     }
@@ -282,6 +289,28 @@ function FoodForm({
           onChange={(event) => setName(event.target.value)}
           maxLength={80}
         />
+        <label className="field-label" htmlFor="food-pairs-well">Pairs well with <span>Optional</span></label>
+        <textarea
+          id="food-pairs-well"
+          className="text-area pairing-text-area"
+          placeholder="e.g. Turkey, cheese, hummus"
+          value={pairsWellWith}
+          onChange={(event) => setPairsWellWith(event.target.value)}
+          maxLength={300}
+          rows={2}
+        />
+        <p className="field-help">Use food names or short guidance, separated by commas.</p>
+        <label className="field-label" htmlFor="food-avoid-pairing">Don’t pair with <span>Optional</span></label>
+        <textarea
+          id="food-avoid-pairing"
+          className="text-area pairing-text-area"
+          placeholder="e.g. Chocolate chips, fruit yogurt"
+          value={avoidPairingWith}
+          onChange={(event) => setAvoidPairingWith(event.target.value)}
+          maxLength={300}
+          rows={2}
+        />
+        <p className="field-help">Bento treats this as a firm rule during generation.</p>
         <div className="modal-actions">
           {onDelete && (
             <button type="button" className="button text-danger" onClick={onDelete}>
@@ -328,6 +357,9 @@ function FoodCard({
             <strong>{food.name}</strong>
             {usage > 0 && <span className="usage-badge">{usage}× this week</span>}
           </div>
+          {(food.pairsWellWith || food.avoidPairingWith) && (
+            <span className="pairing-note">Pairing guidance added</span>
+          )}
         </div>
       </div>
       <button
@@ -540,12 +572,12 @@ function BulkImport({ onImport, onClose }: { onImport: (text: string) => Promise
       <form className="form-stack" onSubmit={submit}>
         <div className="import-help">
           <Info size={17} />
-          <p>One food per line. Every food can be used in every meal.</p>
+          <p>One food per line. Optionally add pairing guidance with vertical bars.</p>
         </div>
         <div className="code-example">
           <span>Blueberries</span>
-          <span>Greek yogurt</span>
-          <span>Cucumber</span>
+          <span>Turkey | cheese, crackers | chocolate chips</span>
+          <span>Tortillas | turkey, cheese | chocolate chips</span>
         </div>
         <label className="upload-field">
           <Upload size={17} />
@@ -558,7 +590,7 @@ function BulkImport({ onImport, onClose }: { onImport: (text: string) => Promise
           className="text-area"
           value={text}
           onChange={(event) => setText(event.target.value)}
-          placeholder={"Blueberries\nGreek yogurt\nCucumber"}
+          placeholder={"Blueberries\nTurkey | cheese, crackers | chocolate chips\nTortillas | turkey, cheese | chocolate chips"}
           rows={8}
         />
         <div className="modal-actions">
@@ -657,21 +689,21 @@ export function BentoApp({
     setToast(message);
   }
 
-  async function saveFood(name: string) {
-    const duplicate = foods.find((food) => food.name.toLowerCase() === name.toLowerCase() && food.id !== (typeof foodModal === "object" ? foodModal.id : undefined));
+  async function saveFood(details: FoodDetails) {
+    const duplicate = foods.find((food) => food.name.toLowerCase() === details.name.toLowerCase() && food.id !== (typeof foodModal === "object" ? foodModal.id : undefined));
     if (duplicate) {
       notify(`${duplicate.name} is already in your library.`);
       return;
     }
     try {
       if (typeof foodModal === "object") {
-        const updated = await updateFoodAction(foodModal.id, { name });
+        const updated = await updateFoodAction(foodModal.id, details);
         setFoods((current) => current.map((food) => food.id === updated.id ? updated : food));
-        notify(`${name} updated.`);
+        notify(`${details.name} updated.`);
       } else {
-        const created = await createFoodAction({ name });
+        const created = await createFoodAction(details);
         setFoods((current) => [...current, created]);
-        notify(`${name} added to your library.`);
+        notify(`${details.name} added to your library.`);
       }
       setFoodModal(undefined);
     } catch (error) {
@@ -786,10 +818,14 @@ export function BentoApp({
   async function importFoods(text: string) {
     const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
     const parsed = lines.flatMap((line) => {
-      const legacyName = line.includes("|") ? line.split("|", 1)[0] : line;
-      const name = legacyName.replace(/^"|"$/g, "").trim();
+      const [rawName = "", rawPairs = "", rawAvoid = ""] = line.split("|", 3);
+      const name = rawName.replace(/^"|"$/g, "").trim();
       if (!name) return [];
-      return [{ name }];
+      return [{
+        name,
+        pairsWellWith: rawPairs.trim(),
+        avoidPairingWith: rawAvoid.trim(),
+      }];
     });
     const existingNames = new Set(foods.map((food) => food.name.toLowerCase()));
     const added = new Set(parsed.filter((food) => !existingNames.has(food.name.toLowerCase())).map((food) => food.name.toLowerCase())).size;
