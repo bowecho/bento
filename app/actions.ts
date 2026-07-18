@@ -42,6 +42,14 @@ const WEEK_GENERATION_MODEL = "google/gemini-2.5-flash-lite";
 const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1_000;
 const RATE_LIMIT_REQUESTS = 5;
 const MAX_GENERATION_FOODS = 250;
+const MAX_GENERATION_ATTEMPTS = 3;
+
+class InvalidGeneratedWeekError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InvalidGeneratedWeekError";
+  }
+}
 
 async function getOpenRouterClient() {
   const apiKey = process.env.OpenRouterKey;
@@ -99,6 +107,56 @@ function generatedWeekJsonSchema(dates: string[], foodTokens: string[]) {
     required: ["days"],
     additionalProperties: false,
   };
+}
+
+function validateGeneratedWeek(
+  content: string,
+  dates: string[],
+  tokenToFood: Map<string, { id: string; name: string }>,
+) {
+  let generated: z.infer<typeof GeneratedWeekSchema>;
+  try {
+    generated = GeneratedWeekSchema.parse(JSON.parse(content));
+  } catch {
+    throw new InvalidGeneratedWeekError("Bento couldn’t validate that menu. Please try again.");
+  }
+
+  const generatedByDate = new Map(generated.days.map((day) => [day.date, day]));
+  if (generatedByDate.size !== dates.length || dates.some((date) => !generatedByDate.has(date))) {
+    throw new InvalidGeneratedWeekError("Bento didn’t plan every day. Please try again.");
+  }
+
+  const categories = ["breakfast", "snack", "lunch"] as const;
+  const plans: Record<string, { breakfast: string[]; snack: string[]; lunch: string[] }> = {};
+  const rows: Array<{ planDate: string; category: (typeof categories)[number]; foodId: string }> = [];
+  let previousDayFoods = new Set<string>();
+
+  for (const date of dates) {
+    const day = generatedByDate.get(date);
+    if (!day) {
+      throw new InvalidGeneratedWeekError("Bento didn’t plan every day. Please try again.");
+    }
+
+    const currentDayFoods = new Set<string>();
+    const plan = { breakfast: [] as string[], snack: [] as string[], lunch: [] as string[] };
+
+    for (const category of categories) {
+      for (const token of day[category]) {
+        const food = tokenToFood.get(token);
+        if (!food || currentDayFoods.has(food.id) || previousDayFoods.has(food.id)) {
+          throw new InvalidGeneratedWeekError("Bento’s menu wasn’t varied enough. Please try again.");
+        }
+        currentDayFoods.add(food.id);
+        plan[category].push(food.id);
+        rows.push({ planDate: date, category, foodId: food.id });
+      }
+    }
+
+    plans[date] = plan;
+    previousDayFoods = currentDayFoods;
+  }
+
+  return { plans, rows };
 }
 
 async function enforceGenerationRateLimit() {
@@ -283,18 +341,21 @@ async function generateWeekMenu(
     .join("\n");
 
   const openRouter = await getOpenRouterClient();
-  const response = await openRouter.chat.send({
-    chatRequest: {
-      model: WEEK_GENERATION_MODEL,
-      messages: [
-        {
-          role: "system",
-          content:
-            "You plan practical children’s breakfasts, snacks, and lunches using only a supplied food library. Return only the requested structured data. Do not make medical or nutrition claims.",
-        },
-        {
-          role: "user",
-          content: `Create a menu for all seven dates below.
+  let validated: ReturnType<typeof validateGeneratedWeek> | undefined;
+
+  for (let attempt = 0; attempt < MAX_GENERATION_ATTEMPTS; attempt += 1) {
+    const response = await openRouter.chat.send({
+      chatRequest: {
+        model: WEEK_GENERATION_MODEL,
+        messages: [
+          {
+            role: "system",
+            content:
+              "You plan practical children’s breakfasts, snacks, and lunches using only a supplied food library. Return only the requested structured data. Do not make medical or nutrition claims.",
+          },
+          {
+            role: "user",
+            content: `Create a menu for all seven dates below.
 
 Dates, in order:
 ${dates.join("\n")}
@@ -310,74 +371,52 @@ Rules:
 - Never use a food on adjacent days. A food may repeat after at least one full day in between.
 - Favor variety across the whole week, while sensible repeats are welcome.
 - Use every supplied date exactly once and only supplied food tokens.`,
+          },
+        ],
+        responseFormat: {
+          type: "json_schema",
+          jsonSchema: {
+            name: "bento_week_menu",
+            strict: true,
+            schema: generatedWeekJsonSchema(dates, foodTokens),
+          },
         },
-      ],
-      responseFormat: {
-        type: "json_schema",
-        jsonSchema: {
-          name: "bento_week_menu",
-          strict: true,
-          schema: generatedWeekJsonSchema(dates, foodTokens),
+        provider: {
+          requireParameters: true,
+          sort: "price",
         },
+        temperature: 0.5,
+        seed: Math.floor(Math.random() * 2_147_483_647),
+        maxTokens: 2_000,
+        stream: false,
       },
-      provider: {
-        requireParameters: true,
-        sort: "price",
-      },
-      temperature: 0.35,
-      maxTokens: 2_000,
-      stream: false,
-    },
-  });
+    });
 
-  if (!("choices" in response)) {
-    throw new Error("Bento didn’t receive a complete menu. Please try again.");
-  }
-
-  const content = response.choices[0]?.message.content;
-  if (typeof content !== "string") {
-    throw new Error("Bento didn’t receive a usable menu. Please try again.");
-  }
-
-  let generated: z.infer<typeof GeneratedWeekSchema>;
-  try {
-    generated = GeneratedWeekSchema.parse(JSON.parse(content));
-  } catch {
-    throw new Error("Bento couldn’t validate that menu. Please try again.");
-  }
-
-  const generatedByDate = new Map(generated.days.map((day) => [day.date, day]));
-  if (generatedByDate.size !== dates.length || dates.some((date) => !generatedByDate.has(date))) {
-    throw new Error("Bento didn’t plan every day. Please try again.");
-  }
-
-  const categories = ["breakfast", "snack", "lunch"] as const;
-  const plans: Record<string, { breakfast: string[]; snack: string[]; lunch: string[] }> = {};
-  const rows: Array<{ planDate: string; category: (typeof categories)[number]; foodId: string }> = [];
-  let previousDayFoods = new Set<string>();
-
-  for (const date of dates) {
-    const day = generatedByDate.get(date);
-    if (!day) throw new Error("Bento didn’t plan every day. Please try again.");
-
-    const currentDayFoods = new Set<string>();
-    const plan = { breakfast: [] as string[], snack: [] as string[], lunch: [] as string[] };
-
-    for (const category of categories) {
-      for (const token of day[category]) {
-        const food = tokenToFood.get(token);
-        if (!food || currentDayFoods.has(food.id) || previousDayFoods.has(food.id)) {
-          throw new Error("Bento’s menu wasn’t varied enough. Please try again.");
-        }
-        currentDayFoods.add(food.id);
-        plan[category].push(food.id);
-        rows.push({ planDate: date, category, foodId: food.id });
-      }
+    if (!("choices" in response)) {
+      throw new Error("Bento didn’t receive a complete menu. Please try again.");
     }
 
-    plans[date] = plan;
-    previousDayFoods = currentDayFoods;
+    const content = response.choices[0]?.message.content;
+    if (typeof content !== "string") {
+      throw new Error("Bento didn’t receive a usable menu. Please try again.");
+    }
+
+    try {
+      validated = validateGeneratedWeek(content, dates, tokenToFood);
+      break;
+    } catch (error) {
+      if (!(error instanceof InvalidGeneratedWeekError) || attempt === MAX_GENERATION_ATTEMPTS - 1) {
+        throw error;
+      }
+      console.warn(`Bento rejected generated menu attempt ${attempt + 1}; retrying.`);
+    }
   }
+
+  if (!validated) {
+    throw new Error("Bento couldn’t generate a valid menu. Please try again.");
+  }
+
+  const { plans, rows } = validated;
 
   await db.transaction(async (tx) => {
     await tx.delete(mealPlanItem).where(inArray(mealPlanItem.planDate, dates));
@@ -398,7 +437,7 @@ export async function generateWeekMenuAction(
       ? `${error.name}: ${error.message}`
       : "Unknown generation error";
     console.error("Bento week generation failed:", errorSummary);
-    const message = error instanceof Error && /^(Add |Bento |You’ve )/.test(error.message)
+    const message = error instanceof Error && /^(Add |Bento(?: |’s )|You’ve )/.test(error.message)
       ? error.message
       : "Bento couldn’t generate a week right now. Please try again.";
     return { status: "error" as const, message };

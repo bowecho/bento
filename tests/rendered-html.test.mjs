@@ -51,6 +51,8 @@ test("Bento exposes its complete planning surface", async () => {
   assert.match(actions, /process\.env\.OpenRouterKey/);
   assert.match(actions, /requireParameters: true/);
   assert.match(actions, /RATE_LIMIT_REQUESTS = 5/);
+  assert.match(actions, /MAX_GENERATION_ATTEMPTS = 3/);
+  assert.match(actions, /InvalidGeneratedWeekError/);
   assert.match(schema, /ai_generation_rate_limit/);
   assert.doesNotMatch(`${page}${app}${layout}`, /codex-preview|Your site is taking shape|react-loading-skeleton/i);
 });
