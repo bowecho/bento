@@ -24,7 +24,10 @@ test("Bento exposes a simple manual planning surface", async () => {
   assert.match(app, /New category/);
   assert.match(app, /Remove category/);
   assert.match(app, /Move foods to/);
-  assert.match(app, /Category for these foods/);
+  assert.match(app, /Food, Category/);
+  assert.match(app, /Default category/);
+  assert.match(app, /New category names will be created automatically/);
+  assert.match(app, /older one-food-per-line lists still work/);
   assert.match(app, /MonthPlanner/);
   assert.match(app, /application\/x-bento-food/);
   assert.match(app, /createCategoryAction/);
@@ -44,6 +47,9 @@ test("Bento exposes a simple manual planning surface", async () => {
   assert.doesNotMatch(schema, /food_relationship|ai_generation_rate_limit|food_relationship_kind/);
   assert.match(plannerData, /categories.*foods.*plans/s);
   assert.doesNotMatch(actions, /OpenRouter|openrouter|generateWeek|categorize|relationship|rate.limit/i);
+  assert.match(actions, /fallbackCategoryId/);
+  assert.match(actions, /requestedCategories/);
+  assert.match(actions, /insert\(foodCategory\)/);
   assert.doesNotMatch(packageFile, /@openrouter\/sdk/);
 
   assert.match(app, /Choose theme and appearance/);

@@ -52,6 +52,7 @@ import {
 } from "@/lib/planner-types";
 type PlannerView = "week" | "month";
 type FoodDetails = Pick<Food, "name" | "categoryId">;
+type FoodImportItem = { name: string; categoryName?: string };
 
 const COLOR_THEMES = [
   { id: "ink", name: "Ink", description: "Black & white", swatches: ["#111111", "#707070", "#f4f4f4"] },
@@ -135,6 +136,50 @@ function niceWeekRange(days: Date[]) {
     return `${start.toLocaleDateString("en-US", { month: "long" })} ${start.getDate()}–${end.getDate()}, ${end.getFullYear()}`;
   }
   return `${start.toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${end.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
+}
+
+function parseImportRow(line: string) {
+  const fields: string[] = [];
+  let field = "";
+  let quoted = false;
+
+  for (let index = 0; index < line.length; index += 1) {
+    const character = line[index];
+    if (character === '"') {
+      if (quoted && line[index + 1] === '"') {
+        field += '"';
+        index += 1;
+      } else {
+        quoted = !quoted;
+      }
+    } else if (character === "," && !quoted) {
+      fields.push(field.trim());
+      field = "";
+    } else {
+      field += character;
+    }
+  }
+  fields.push(field.trim());
+  return fields;
+}
+
+function parseFoodImport(text: string): FoodImportItem[] {
+  const rows = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map(parseImportRow);
+  const first = rows[0];
+  const hasHeader = first
+    && ["food", "food name", "name"].includes(first[0]?.toLowerCase() ?? "")
+    && (first.length === 1 || first[1]?.toLowerCase() === "category");
+
+  return (hasHeader ? rows.slice(1) : rows)
+    .map(([name, categoryName]) => ({
+      name: name?.trim() ?? "",
+      categoryName: categoryName?.trim() || undefined,
+    }))
+    .filter((item) => item.name.length > 0);
 }
 
 function Modal({
@@ -678,11 +723,11 @@ function BulkImport({
   onClose,
 }: {
   categories: FoodCategory[];
-  onImport: (text: string, categoryId: string) => Promise<number>;
+  onImport: (items: FoodImportItem[], fallbackCategoryId: string) => Promise<number>;
   onClose: () => void;
 }) {
   const [text, setText] = useState("");
-  const [categoryId, setCategoryId] = useState(categories[0]?.id ?? "");
+  const [fallbackCategoryId, setFallbackCategoryId] = useState(categories[0]?.id ?? "");
   const [importing, setImporting] = useState(false);
 
   function readFile(event: ChangeEvent<HTMLInputElement>) {
@@ -695,10 +740,11 @@ function BulkImport({
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (!text.trim() || !categoryId) return;
+    const items = parseFoodImport(text);
+    if (items.length === 0 || !fallbackCategoryId) return;
     setImporting(true);
     try {
-      await onImport(text, categoryId);
+      await onImport(items, fallbackCategoryId);
       onClose();
     } catch {
       // The parent displays the database error in Bento's toast.
@@ -712,12 +758,12 @@ function BulkImport({
       <form className="form-stack" onSubmit={submit}>
         <div className="import-help">
           <Tags size={17} />
-          <p>One food per line. Every food in this import will use the category you choose below.</p>
+          <p>Add a category after each food, separated by a comma. New category names will be created automatically.</p>
         </div>
         <div className="code-example">
-          <span>Blueberries</span>
-          <span>Turkey sandwich meat</span>
-          <span>Whole-grain crackers</span>
+          <span>Food, Category</span>
+          <span>Blueberries, Fruit</span>
+          <span>Turkey sandwich meat, Protein</span>
         </div>
         <label className="upload-field">
           <Upload size={17} />
@@ -730,24 +776,25 @@ function BulkImport({
           className="text-area"
           value={text}
           onChange={(event) => setText(event.target.value)}
-          placeholder={"Blueberries\nTurkey sandwich meat\nWhole-grain crackers"}
+          placeholder={"Food, Category\nBlueberries, Fruit\nTurkey sandwich meat, Protein"}
           rows={8}
         />
-        <label className="field-label" htmlFor="bulk-category">Category for these foods</label>
+        <label className="field-label" htmlFor="bulk-category">Default category</label>
         <select
           id="bulk-category"
           className="select-input"
-          value={categoryId}
-          onChange={(event) => setCategoryId(event.target.value)}
+          value={fallbackCategoryId}
+          onChange={(event) => setFallbackCategoryId(event.target.value)}
           required
         >
           {categories.map((category) => (
             <option key={category.id} value={category.id}>{category.name}</option>
           ))}
         </select>
+        <p className="field-help">Used for foods that don’t include a category, so older one-food-per-line lists still work.</p>
         <div className="modal-actions">
           <button type="button" className="button secondary" onClick={onClose}>Cancel</button>
-          <button className="button primary" disabled={importing || !text.trim() || !categoryId}>
+          <button className="button primary" disabled={importing || !text.trim() || !fallbackCategoryId}>
             {importing ? "Importing…" : "Import foods"}
           </button>
         </div>
@@ -949,17 +996,25 @@ export function BentoApp({
     });
   }
 
-  async function importFoods(text: string, categoryId: string) {
-    const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-    const parsed = lines
-      .map((line) => line.replace(/^"|"$/g, "").trim())
-      .filter(Boolean);
+  async function importFoods(items: FoodImportItem[], fallbackCategoryId: string) {
     const existingNames = new Set(foods.map((food) => food.name.toLowerCase()));
-    const added = new Set(parsed.filter((name) => !existingNames.has(name.toLowerCase())).map((name) => name.toLowerCase())).size;
+    const added = new Set(
+      items
+        .filter((item) => !existingNames.has(item.name.toLowerCase()))
+        .map((item) => item.name.toLowerCase()),
+    ).size;
+    const existingCategoryNames = new Set(categories.map((category) => category.name.toLowerCase()));
     try {
-      const storedFoods = await importFoodsAction({ names: parsed, categoryId });
-      setFoods(storedFoods);
-      notify(`${added} ${added === 1 ? "food" : "foods"} imported.`);
+      const result = await importFoodsAction({ items, fallbackCategoryId });
+      const addedCategories = result.categories.filter(
+        (category) => !existingCategoryNames.has(category.name.toLowerCase()),
+      ).length;
+      setCategories(result.categories);
+      setFoods(result.foods);
+      const categoryMessage = addedCategories > 0
+        ? ` ${addedCategories} ${addedCategories === 1 ? "category" : "categories"} added.`
+        : "";
+      notify(`${added} ${added === 1 ? "food" : "foods"} imported.${categoryMessage}`);
       return added;
     } catch (error) {
       notify(errorMessage(error));

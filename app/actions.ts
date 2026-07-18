@@ -24,9 +24,14 @@ const DeleteCategoryInputSchema = z.object({
   replacementCategoryId: z.uuid().optional(),
 });
 
+const ImportFoodItemSchema = z.object({
+  name: z.string().trim().min(1).max(80),
+  categoryName: z.string().trim().min(1).max(40).optional(),
+});
+
 const ImportFoodsInputSchema = z.object({
-  names: z.array(z.string().trim().min(1).max(80)).min(1).max(250),
-  categoryId: z.uuid(),
+  items: z.array(ImportFoodItemSchema).min(1).max(250),
+  fallbackCategoryId: z.uuid(),
 });
 
 const PlanItemSchema = z.object({
@@ -157,25 +162,86 @@ export async function deleteFoodAction(id: string) {
 export async function importFoodsAction(
   input: z.input<typeof ImportFoodsInputSchema>,
 ) {
-  const { names, categoryId } = ImportFoodsInputSchema.parse(input);
-  await ensureCategoryExists(categoryId);
+  const { items, fallbackCategoryId } = ImportFoodsInputSchema.parse(input);
   const db = getDb();
-  const current = await db.select({ name: foodItem.name }).from(foodItem);
-  const existingNames = new Set(current.map(({ name }) => name.toLowerCase()));
-  const newNames = [...new Map(
-    names
-      .filter((name) => !existingNames.has(name.toLowerCase()))
-      .map((name) => [name.toLowerCase(), name]),
-  ).values()];
 
-  if (newNames.length > 0) {
-    await db
-      .insert(foodItem)
-      .values(newNames.map((name) => ({ name, categoryId })))
-      .onConflictDoNothing();
-  }
+  await db.transaction(async (tx) => {
+    const categoryRows = await tx
+      .select({
+        id: foodCategory.id,
+        name: foodCategory.name,
+        sortOrder: foodCategory.sortOrder,
+      })
+      .from(foodCategory);
+    if (!categoryRows.some((category) => category.id === fallbackCategoryId)) {
+      throw new Error("That default category is no longer available.");
+    }
+
+    const categoriesByName = new Map(
+      categoryRows.map((category) => [category.name.toLowerCase(), category]),
+    );
+    let nextSortOrder = Math.max(0, ...categoryRows.map((category) => category.sortOrder)) + 1;
+    const requestedCategories = new Map<string, string>();
+    for (const item of items) {
+      if (!item.categoryName) continue;
+      const key = item.categoryName.toLowerCase();
+      if (!categoriesByName.has(key)) requestedCategories.set(key, item.categoryName);
+    }
+
+    for (const [key, name] of requestedCategories) {
+      const [created] = await tx
+        .insert(foodCategory)
+        .values({ name, sortOrder: nextSortOrder })
+        .onConflictDoNothing()
+        .returning({
+          id: foodCategory.id,
+          name: foodCategory.name,
+          sortOrder: foodCategory.sortOrder,
+        });
+      nextSortOrder += 1;
+
+      if (created) {
+        categoriesByName.set(key, created);
+        continue;
+      }
+
+      const [existing] = await tx
+        .select({
+          id: foodCategory.id,
+          name: foodCategory.name,
+          sortOrder: foodCategory.sortOrder,
+        })
+        .from(foodCategory)
+        .where(sql`lower(${foodCategory.name}) = lower(${name})`)
+        .limit(1);
+      if (!existing) throw new Error(`Bento couldn’t create the ${name} category.`);
+      categoriesByName.set(key, existing);
+    }
+
+    const currentFoods = await tx.select({ name: foodItem.name }).from(foodItem);
+    const existingNames = new Set(currentFoods.map(({ name }) => name.toLowerCase()));
+    const newItems = [...new Map(
+      items
+        .filter((item) => !existingNames.has(item.name.toLowerCase()))
+        .map((item) => [item.name.toLowerCase(), item]),
+    ).values()];
+
+    if (newItems.length > 0) {
+      await tx
+        .insert(foodItem)
+        .values(newItems.map((item) => ({
+          name: item.name,
+          categoryId: item.categoryName
+            ? categoriesByName.get(item.categoryName.toLowerCase())?.id ?? fallbackCategoryId
+            : fallbackCategoryId,
+        })))
+        .onConflictDoNothing();
+    }
+  });
+
   revalidatePath("/");
-  return (await loadPlannerData()).foods;
+  const data = await loadPlannerData();
+  return { categories: data.categories, foods: data.foods };
 }
 
 export async function addPlanItemAction(input: z.input<typeof PlanItemSchema>) {
