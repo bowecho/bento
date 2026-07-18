@@ -229,7 +229,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [role="button
 .meal-zone.drag-over { border-color: var(--green); transform: scale(1.015); box-shadow: 0 7px 16px rgba(49, 95, 75, .12); }
 .meal-zone-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 7px; }
 .meal-zone-heading > div { display: flex; align-items: center; font-size: 9px; text-transform: uppercase; letter-spacing: .085em; font-weight: 800; padding: 1px 2px; }
-.empty-meal { width: 100%; min-height: 47px; border: 1px dashed rgba(88, 85, 73, .2); border-radius: 9px; background: rgba(255,255,255,.4); color: rgba(77, 78, 71, .52); font-size: 9px; padding: 5px; display: grid; place-items: center; }
+.empty-meal { width: 100%; min-height: 47px; }
 .meal-items { display: flex; flex-direction: column; gap: 2px; }
 .meal-chip-slot { position: relative; padding: 2px 0; border-radius: 7px; }
 .meal-chip-slot::before, .meal-chip-slot::after { content: ""; position: absolute; left: 3px; right: 3px; z-index: 2; height: 2px; border-radius: 99px; background: var(--accent); opacity: 0; transform: scaleX(.65); transition: opacity .12s ease, transform .12s ease; pointer-events: none; }
