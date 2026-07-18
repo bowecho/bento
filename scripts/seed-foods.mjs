@@ -55,6 +55,32 @@ const foods = [
   { name: "Jelly", pairsWellWith: "Peanut butter, whole-grain bread" },
 ].map((food) => ({ avoidPairingWith: "", ...food }));
 
+const categoryNames = {
+  protein: [
+    "Eggs", "Hard-boiled eggs", "Scrambled eggs", "Turkey sandwich meat",
+    "Turkey pepperoni", "Turkey sausage", "Ground turkey", "Chicken", "Steak",
+    "Refried beans", "Beans", "Peanut butter",
+  ],
+  fruit: ["Apples", "Bananas", "Grapes", "Berries", "Strawberries", "Oranges"],
+  vegetable: ["Carrots", "Corn"],
+  dairy: ["Greek yogurt", "Yogurt", "Milk", "Cheese", "Cheese sticks", "Cheese slices", "Cheese cubes"],
+  grain_starch: [
+    "Whole-grain bread", "Whole-grain toast", "English muffins", "Tortillas",
+    "White rice", "Brown rice", "Whole-grain crackers", "Pretzels", "Popcorn",
+    "Oats", "Overnight oats", "Original Cheerios", "Multigrain Cheerios",
+    "Wheat Chex", "Shredded wheat", "Kix", "Raisin Bran", "Lower-sugar granola",
+  ],
+  pantry_extra: ["Salsa", "Jelly"],
+};
+
+const categoryByName = new Map(
+  Object.entries(categoryNames).flatMap(([category, names]) => names.map((name) => [name, category])),
+);
+
+function referencedNames(value) {
+  return value.split(/[,;\n]+/).map((name) => name.trim().toLowerCase()).filter(Boolean);
+}
+
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error("DATABASE_URL is required");
 
@@ -65,11 +91,29 @@ try {
   await client.query("begin");
   await client.query("delete from food_item");
   await client.query("delete from ai_generation_rate_limit");
+  const foodIdsByName = new Map();
   for (const food of foods) {
-    await client.query(
-      "insert into food_item (name, pairs_well_with, avoid_pairing_with) values ($1, $2, $3)",
-      [food.name, food.pairsWellWith, food.avoidPairingWith],
+    const result = await client.query(
+      "insert into food_item (name, category) values ($1, $2) returning id",
+      [food.name, categoryByName.get(food.name) ?? "pantry_extra"],
     );
+    foodIdsByName.set(food.name.toLowerCase(), result.rows[0].id);
+  }
+  for (const food of foods) {
+    const sourceFoodId = foodIdsByName.get(food.name.toLowerCase());
+    for (const [kind, names] of [
+      ["pairs_well", referencedNames(food.pairsWellWith)],
+      ["avoid", referencedNames(food.avoidPairingWith)],
+    ]) {
+      for (const name of names) {
+        const targetFoodId = foodIdsByName.get(name);
+        if (!targetFoodId || targetFoodId === sourceFoodId) continue;
+        await client.query(
+          "insert into food_relationship (source_food_id, target_food_id, kind) values ($1, $2, $3), ($2, $1, $3) on conflict do nothing",
+          [sourceFoodId, targetFoodId, kind],
+        );
+      }
+    }
   }
   await client.query("commit");
   console.log(`Seeded ${foods.length} foods with pairing guidance.`);

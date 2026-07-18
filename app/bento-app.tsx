@@ -9,7 +9,6 @@ import {
   Copy,
   Edit3,
   GripVertical,
-  Info,
   LayoutGrid,
   ListFilter,
   LoaderCircle,
@@ -33,6 +32,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { FoodChooser } from "./food-chooser";
 import {
   addPlanItemAction,
   createFoodAction,
@@ -50,8 +50,16 @@ import {
   type Food,
   type Plans,
 } from "@/lib/planner-types";
+import {
+  FOOD_CATEGORIES,
+  FOOD_CATEGORY_LABELS,
+  type FoodCategory,
+} from "@/lib/food-categories";
 type PlannerView = "week" | "month";
-type FoodDetails = Pick<Food, "name" | "pairsWellWith" | "avoidPairingWith">;
+type FoodDetails = Pick<
+  Food,
+  "name" | "category" | "pairsWellWithIds" | "avoidPairingWithIds"
+>;
 
 const COLOR_THEMES = [
   { id: "ink", name: "Ink", description: "Black & white", swatches: ["#111111", "#707070", "#f4f4f4"] },
@@ -239,18 +247,21 @@ function ThemePicker({
 
 function FoodForm({
   food,
+  foods,
   onSave,
   onClose,
   onDelete,
 }: {
   food?: Food;
+  foods: Food[];
   onSave: (details: FoodDetails) => Promise<void>;
   onClose: () => void;
   onDelete?: () => void;
 }) {
   const [name, setName] = useState(food?.name ?? "");
-  const [pairsWellWith, setPairsWellWith] = useState(food?.pairsWellWith ?? "");
-  const [avoidPairingWith, setAvoidPairingWith] = useState(food?.avoidPairingWith ?? "");
+  const [category, setCategory] = useState<FoodCategory>(food?.category ?? "pantry_extra");
+  const [pairsWellWithIds, setPairsWellWithIds] = useState(food?.pairsWellWithIds ?? []);
+  const [avoidPairingWithIds, setAvoidPairingWithIds] = useState(food?.avoidPairingWithIds ?? []);
   const [saving, setSaving] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -264,8 +275,9 @@ function FoodForm({
     try {
       await onSave({
         name: cleanName,
-        pairsWellWith: pairsWellWith.trim(),
-        avoidPairingWith: avoidPairingWith.trim(),
+        category,
+        pairsWellWithIds,
+        avoidPairingWithIds,
       });
     } finally {
       setSaving(false);
@@ -277,6 +289,7 @@ function FoodForm({
       title={food ? "Edit food" : "Add a food"}
       eyebrow="Food library"
       onClose={onClose}
+      size="wide"
     >
       <form onSubmit={submit} className="form-stack">
         <label className="field-label" htmlFor="food-name">Food name</label>
@@ -289,28 +302,48 @@ function FoodForm({
           onChange={(event) => setName(event.target.value)}
           maxLength={80}
         />
-        <label className="field-label" htmlFor="food-pairs-well">Pairs well with <span>Optional</span></label>
-        <textarea
-          id="food-pairs-well"
-          className="text-area pairing-text-area"
-          placeholder="e.g. Turkey, cheese, hummus"
-          value={pairsWellWith}
-          onChange={(event) => setPairsWellWith(event.target.value)}
-          maxLength={300}
-          rows={2}
+        {food ? (
+          <>
+            <label className="field-label" htmlFor="food-category">Category</label>
+            <select
+              id="food-category"
+              className="select-input"
+              value={category}
+              onChange={(event) => setCategory(event.target.value as FoodCategory)}
+            >
+              {FOOD_CATEGORIES.map(({ key, label }) => (
+                <option key={key} value={key}>{label}</option>
+              ))}
+            </select>
+          </>
+        ) : (
+          <div className="auto-category-note">
+            <Sparkles size={15} aria-hidden="true" />
+            <span><strong>Automatic organization</strong>Bento will choose the best category when you add this food.</span>
+          </div>
+        )}
+        <FoodChooser
+          label="Pairs well with"
+          help="Choose foods that naturally belong in the same meal."
+          foods={foods}
+          selectedIds={pairsWellWithIds}
+          excludedId={food?.id}
+          onChange={(ids) => {
+            setPairsWellWithIds(ids);
+            setAvoidPairingWithIds((current) => current.filter((id) => !ids.includes(id)));
+          }}
         />
-        <p className="field-help">Use food names or short guidance, separated by commas.</p>
-        <label className="field-label" htmlFor="food-avoid-pairing">Don’t pair with <span>Optional</span></label>
-        <textarea
-          id="food-avoid-pairing"
-          className="text-area pairing-text-area"
-          placeholder="e.g. Chocolate chips, fruit yogurt"
-          value={avoidPairingWith}
-          onChange={(event) => setAvoidPairingWith(event.target.value)}
-          maxLength={300}
-          rows={2}
+        <FoodChooser
+          label="Don’t pair with"
+          help="These foods will never be placed together by Generate Week."
+          foods={foods}
+          selectedIds={avoidPairingWithIds}
+          excludedId={food?.id}
+          onChange={(ids) => {
+            setAvoidPairingWithIds(ids);
+            setPairsWellWithIds((current) => current.filter((id) => !ids.includes(id)));
+          }}
         />
-        <p className="field-help">Bento treats this as a firm rule during generation.</p>
         <div className="modal-actions">
           {onDelete && (
             <button type="button" className="button text-danger" onClick={onDelete}>
@@ -320,7 +353,7 @@ function FoodForm({
           <span className="modal-action-spacer" />
           <button type="button" className="button secondary" onClick={onClose}>Cancel</button>
           <button className="button primary" disabled={saving || !name.trim()}>
-            {saving ? "Saving…" : food ? "Save changes" : "Add food"}
+            {saving ? (food ? "Saving…" : "Categorizing…") : food ? "Save changes" : "Add food"}
           </button>
         </div>
       </form>
@@ -357,9 +390,17 @@ function FoodCard({
             <strong>{food.name}</strong>
             {usage > 0 && <span className="usage-badge">{usage}× this week</span>}
           </div>
-          {(food.pairsWellWith || food.avoidPairingWith) && (
-            <span className="pairing-note">Pairing guidance added</span>
-          )}
+          <div className="food-card-meta">
+            <span className={`food-category-badge category-${food.category}`}>
+              {FOOD_CATEGORY_LABELS[food.category]}
+            </span>
+            {(food.pairsWellWithIds.length > 0 || food.avoidPairingWithIds.length > 0) && (
+              <span className="pairing-note">
+                {food.pairsWellWithIds.length + food.avoidPairingWithIds.length} pairing
+                {food.pairsWellWithIds.length + food.avoidPairingWithIds.length === 1 ? "" : "s"}
+              </span>
+            )}
+          </div>
         </div>
       </div>
       <button
@@ -571,13 +612,13 @@ function BulkImport({ onImport, onClose }: { onImport: (text: string) => Promise
     <Modal title="Import foods" eyebrow="Bulk add" onClose={onClose} size="wide">
       <form className="form-stack" onSubmit={submit}>
         <div className="import-help">
-          <Info size={17} />
-          <p>One food per line. Optionally add pairing guidance with vertical bars.</p>
+          <Sparkles size={17} />
+          <p>One food per line. Bento will automatically organize every new food into a category.</p>
         </div>
         <div className="code-example">
           <span>Blueberries</span>
-          <span>Turkey | cheese, crackers | chocolate chips</span>
-          <span>Tortillas | turkey, cheese | chocolate chips</span>
+          <span>Turkey sandwich meat</span>
+          <span>Whole-grain crackers</span>
         </div>
         <label className="upload-field">
           <Upload size={17} />
@@ -590,7 +631,7 @@ function BulkImport({ onImport, onClose }: { onImport: (text: string) => Promise
           className="text-area"
           value={text}
           onChange={(event) => setText(event.target.value)}
-          placeholder={"Blueberries\nTurkey | cheese, crackers | chocolate chips\nTortillas | turkey, cheese | chocolate chips"}
+          placeholder={"Blueberries\nTurkey sandwich meat\nWhole-grain crackers"}
           rows={8}
         />
         <div className="modal-actions">
@@ -616,6 +657,7 @@ export function BentoApp({
   const [cursor, setCursor] = useState(() => new Date());
   const [view, setView] = useState<PlannerView>("week");
   const [search, setSearch] = useState("");
+  const [activeFoodCategory, setActiveFoodCategory] = useState<FoodCategory | "all">("all");
   const [foodModal, setFoodModal] = useState<"new" | Food>();
   const [bulkOpen, setBulkOpen] = useState(false);
   const [shoppingOpen, setShoppingOpen] = useState(false);
@@ -659,9 +701,15 @@ export function BentoApp({
   const visibleFoods = useMemo(() => {
     const query = search.trim().toLowerCase();
     return foods
+      .filter((food) => activeFoodCategory === "all" || food.category === activeFoodCategory)
       .filter((food) => !query || food.name.toLowerCase().includes(query))
       .sort((a, b) => (weeklyUsage.get(a.id) ?? 0) - (weeklyUsage.get(b.id) ?? 0) || a.name.localeCompare(b.name));
-  }, [foods, search, weeklyUsage]);
+  }, [activeFoodCategory, foods, search, weeklyUsage]);
+
+  const groupedVisibleFoods = useMemo(() => FOOD_CATEGORIES.flatMap((category) => {
+    const categoryFoods = visibleFoods.filter((food) => food.category === category.key);
+    return categoryFoods.length > 0 ? [{ ...category, foods: categoryFoods }] : [];
+  }), [visibleFoods]);
 
   const variety = useMemo(() => {
     const counts = [...weeklyUsage.values()];
@@ -697,12 +745,12 @@ export function BentoApp({
     }
     try {
       if (typeof foodModal === "object") {
-        const updated = await updateFoodAction(foodModal.id, details);
-        setFoods((current) => current.map((food) => food.id === updated.id ? updated : food));
+        const storedFoods = await updateFoodAction(foodModal.id, details);
+        setFoods(storedFoods);
         notify(`${details.name} updated.`);
       } else {
-        const created = await createFoodAction(details);
-        setFoods((current) => [...current, created]);
+        const storedFoods = await createFoodAction(details);
+        setFoods(storedFoods);
         notify(`${details.name} added to your library.`);
       }
       setFoodModal(undefined);
@@ -713,8 +761,8 @@ export function BentoApp({
 
   async function removeFood(food: Food) {
     try {
-      await deleteFoodAction(food.id);
-      setFoods((current) => current.filter((item) => item.id !== food.id));
+      const storedFoods = await deleteFoodAction(food.id);
+      setFoods(storedFoods);
       setPlans((current) => {
         const next: Plans = {};
         for (const [key, plan] of Object.entries(current)) {
@@ -817,18 +865,11 @@ export function BentoApp({
 
   async function importFoods(text: string) {
     const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-    const parsed = lines.flatMap((line) => {
-      const [rawName = "", rawPairs = "", rawAvoid = ""] = line.split("|", 3);
-      const name = rawName.replace(/^"|"$/g, "").trim();
-      if (!name) return [];
-      return [{
-        name,
-        pairsWellWith: rawPairs.trim(),
-        avoidPairingWith: rawAvoid.trim(),
-      }];
-    });
+    const parsed = lines
+      .map((line) => line.replace(/^"|"$/g, "").trim())
+      .filter(Boolean);
     const existingNames = new Set(foods.map((food) => food.name.toLowerCase()));
-    const added = new Set(parsed.filter((food) => !existingNames.has(food.name.toLowerCase())).map((food) => food.name.toLowerCase())).size;
+    const added = new Set(parsed.filter((name) => !existingNames.has(name.toLowerCase())).map((name) => name.toLowerCase())).size;
     try {
       const storedFoods = await importFoodsAction(parsed);
       setFoods(storedFoods);
@@ -934,25 +975,60 @@ export function BentoApp({
             {search && <button onClick={() => setSearch("")} aria-label="Clear search"><X size={14} /></button>}
           </div>
 
+          <div className="food-category-filter" role="group" aria-label="Filter food categories">
+            <button
+              type="button"
+              className={activeFoodCategory === "all" ? "active" : ""}
+              aria-pressed={activeFoodCategory === "all"}
+              onClick={() => setActiveFoodCategory("all")}
+            >
+              All <span>{foods.length}</span>
+            </button>
+            {FOOD_CATEGORIES.map(({ key, label }) => {
+              const count = foods.filter((food) => food.category === key).length;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  className={activeFoodCategory === key ? "active" : ""}
+                  aria-pressed={activeFoodCategory === key}
+                  onClick={() => setActiveFoodCategory(key)}
+                >
+                  {label} <span>{count}</span>
+                </button>
+              );
+            })}
+          </div>
+
           <div className="touch-tip">
             <GripVertical size={14} />
             <span>Drag any food into any meal.</span>
           </div>
 
           <div className="food-list" data-testid="food-list">
-            {visibleFoods.map((food) => (
-              <FoodCard
-                key={food.id}
-                food={food}
-                usage={weeklyUsage.get(food.id) ?? 0}
-                onEdit={() => setFoodModal(food)}
-              />
+            {groupedVisibleFoods.map((group) => (
+              <section className="food-category-group" key={group.key} data-category={group.key}>
+                <div className="food-category-heading">
+                  <h2>{group.label}</h2>
+                  <span>{group.foods.length}</span>
+                </div>
+                <div className="food-category-items">
+                  {group.foods.map((food) => (
+                    <FoodCard
+                      key={food.id}
+                      food={food}
+                      usage={weeklyUsage.get(food.id) ?? 0}
+                      onEdit={() => setFoodModal(food)}
+                    />
+                  ))}
+                </div>
+              </section>
             ))}
             {visibleFoods.length === 0 && (
               <div className="library-empty">
                 <ListFilter size={22} />
                 <strong>{foods.length === 0 ? "Your bento box is empty" : "No foods found"}</strong>
-                <span>{foods.length === 0 ? "Add a first favorite and start packing." : "Try another filter or add something new."}</span>
+                <span>{foods.length === 0 ? "Add a first favorite and start packing." : "Try another search or category."}</span>
               </div>
             )}
           </div>
@@ -1028,6 +1104,7 @@ export function BentoApp({
       {foodModal && (
         <FoodForm
           food={typeof foodModal === "object" ? foodModal : undefined}
+          foods={foods}
           onSave={saveFood}
           onClose={() => setFoodModal(undefined)}
           onDelete={typeof foodModal === "object" ? () => { setDeleteCandidate(foodModal); setFoodModal(undefined); } : undefined}

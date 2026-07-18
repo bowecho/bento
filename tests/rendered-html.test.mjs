@@ -3,9 +3,11 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 test("Bento exposes its complete planning surface", async () => {
-  const [page, app, layout, styles, actions, schema] = await Promise.all([
+  const [page, app, chooser, categories, layout, styles, actions, schema] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/bento-app.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/food-chooser.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/food-categories.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
     readFile(new URL("../app/actions.ts", import.meta.url), "utf8"),
@@ -22,14 +24,18 @@ test("Bento exposes its complete planning surface", async () => {
   assert.doesNotMatch(app, /Gentle guidance|variety-legend/);
   assert.match(app, /Import foods/);
   assert.match(app, /Drag any food into any meal/);
-  assert.doesNotMatch(app, /Works for|Filter food categories|food\.categories|matching meal/);
+  assert.doesNotMatch(app, /Works for|food\.categories|matching meal/);
+  assert.match(app, /Filter food categories/);
+  assert.match(categories, /Protein.*Fruit.*Vegetable.*Dairy.*Grain & Starch.*Pantry & Extras/s);
+  assert.match(app, /Automatic organization/);
+  assert.match(app, /Bento will choose the best category/);
   assert.match(app, /MonthPlanner/);
   assert.match(app, /application\/x-bento-food/);
   assert.doesNotMatch(app, /className="meal-add"|selection-banner|Select to add on touch devices/);
   assert.doesNotMatch(app, /Drop food here/);
   assert.match(page, /loadPlannerData/);
   assert.match(app, /createFoodAction/);
-  assert.doesNotMatch(styles, /filter-row|category-choice|food-categories|mini-dot/);
+  assert.doesNotMatch(styles, /mini-dot/);
   assert.match(app, /Choose theme and appearance/);
   assert.match(app, /Appearance mode/);
   assert.doesNotMatch(app, /Toggle light or dark mode/);
@@ -59,7 +65,14 @@ test("Bento exposes its complete planning surface", async () => {
   assert.match(actions, /violatesExplicitPairingGuidance/);
   assert.match(app, /Pairs well with/);
   assert.match(app, /Don’t pair with/);
-  assert.match(app, /Pairing guidance added/);
+  assert.match(chooser, /selectedIds/);
+  assert.match(chooser, /aria-pressed/);
+  assert.doesNotMatch(app, /Use food names or short guidance|pairing-text-area/);
+  assert.match(actions, /categorizeFoodNames/);
+  assert.match(actions, /bento_food_categories/);
+  assert.match(actions, /FOOD_CATEGORIZATION_MODEL/);
+  assert.match(schema, /food_relationship/);
+  assert.match(schema, /food_category/);
   assert.match(schema, /ai_generation_rate_limit/);
   assert.doesNotMatch(`${page}${app}${layout}`, /codex-preview|Your site is taking shape|react-loading-skeleton/i);
 });
