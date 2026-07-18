@@ -30,6 +30,11 @@ test("Bento exposes a simple manual planning surface", async () => {
   assert.match(app, /older one-food-per-line lists still work/);
   assert.match(app, /MonthPlanner/);
   assert.match(app, /application\/x-bento-food/);
+  assert.match(app, /application\/x-bento-plan-item/);
+  assert.match(app, /movePlanItemAction/);
+  assert.match(app, /movePlannedFood/);
+  assert.match(app, /meal-chip-slot/);
+  assert.match(app, /className="meal-chip"[\s\S]*draggable/);
   assert.match(app, /createCategoryAction/);
   assert.match(app, /deleteCategoryAction/);
   assert.match(app, /createFoodAction/);
@@ -44,6 +49,8 @@ test("Bento exposes a simple manual planning surface", async () => {
 
   assert.match(schema, /food_category_record/);
   assert.match(schema, /categoryId: uuid\("category_id"\)/);
+  assert.match(schema, /sortOrder: integer\("sort_order"\)/);
+  assert.match(plannerData, /asc\(mealPlanItem\.sortOrder\)/);
   assert.doesNotMatch(schema, /food_relationship|ai_generation_rate_limit|food_relationship_kind/);
   assert.match(plannerData, /categories.*foods.*plans/s);
   assert.doesNotMatch(actions, /OpenRouter|openrouter|generateWeek|categorize|relationship|rate.limit/i);

@@ -23,6 +23,7 @@ export async function loadPlannerData() {
       .orderBy(
         asc(mealPlanItem.planDate),
         asc(mealPlanItem.category),
+        asc(mealPlanItem.sortOrder),
         asc(mealPlanItem.createdAt),
       ),
   ]);

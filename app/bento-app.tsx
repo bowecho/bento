@@ -38,6 +38,7 @@ import {
   deleteCategoryAction,
   deleteFoodAction,
   importFoodsAction,
+  movePlanItemAction,
   removePlanItemAction,
   updateFoodAction,
 } from "./actions";
@@ -50,9 +51,16 @@ import {
   type FoodCategory,
   type Plans,
 } from "@/lib/planner-types";
+import {
+  movePlannedFood,
+  type PlanDragSource,
+} from "@/lib/plan-order";
 type PlannerView = "week" | "month";
 type FoodDetails = Pick<Food, "name" | "categoryId">;
 type FoodImportItem = { name: string; categoryName?: string };
+
+const FOOD_DRAG_TYPE = "application/x-bento-food";
+const PLAN_DRAG_TYPE = "application/x-bento-plan-item";
 
 const COLOR_THEMES = [
   { id: "ink", name: "Ink", description: "Black & white", swatches: ["#111111", "#707070", "#f4f4f4"] },
@@ -90,6 +98,28 @@ const CATEGORY_COLOR: Record<Category, string> = {
 
 function emptyDay(): DayPlan {
   return { breakfast: [], snack: [], lunch: [] };
+}
+
+function isCategoryKey(value: unknown): value is CategoryKey {
+  return value === "breakfast" || value === "snack" || value === "lunch";
+}
+
+function readPlanDrag(event: DragEvent<HTMLElement>): PlanDragSource | undefined {
+  const raw = event.dataTransfer.getData(PLAN_DRAG_TYPE);
+  if (!raw) return undefined;
+  try {
+    const value = JSON.parse(raw) as Partial<PlanDragSource>;
+    if (
+      typeof value.foodId === "string"
+      && typeof value.date === "string"
+      && isCategoryKey(value.category)
+    ) {
+      return { foodId: value.foodId, date: value.date, category: value.category };
+    }
+  } catch {
+    // Ignore malformed drag data from outside Bento.
+  }
+  return undefined;
 }
 
 function errorMessage(error: unknown) {
@@ -373,7 +403,8 @@ function FoodCard({
   onEdit: () => void;
 }) {
   function startDrag(event: DragEvent<HTMLDivElement>) {
-    event.dataTransfer.setData("application/x-bento-food", food.id);
+    event.dataTransfer.setData(FOOD_DRAG_TYPE, food.id);
+    event.dataTransfer.setData("text/plain", food.name);
     event.dataTransfer.effectAllowed = "copy";
   }
 
@@ -415,23 +446,43 @@ function MealZone({
   foodIds,
   foodsById,
   onAdd,
+  onMove,
   onRemove,
 }: {
   date: Date;
   category: Category;
   foodIds: string[];
   foodsById: Map<string, Food>;
-  onAdd: (foodId: string) => void;
+  onAdd: (foodId: string, toIndex: number) => void;
+  onMove: (source: PlanDragSource, toIndex: number) => void;
   onRemove: (foodId: string) => void;
 }) {
   const [dragOver, setDragOver] = useState(false);
+  const [dropIndex, setDropIndex] = useState<number>();
   const label = `${category} for ${date.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}`;
 
-  function drop(event: DragEvent<HTMLDivElement>) {
+  function drop(event: DragEvent<HTMLElement>, toIndex: number) {
     event.preventDefault();
     setDragOver(false);
-    const foodId = event.dataTransfer.getData("application/x-bento-food");
-    if (foodId) onAdd(foodId);
+    setDropIndex(undefined);
+    const source = readPlanDrag(event);
+    if (source) {
+      onMove(source, toIndex);
+      return;
+    }
+    const foodId = event.dataTransfer.getData(FOOD_DRAG_TYPE);
+    if (foodId) onAdd(foodId, toIndex);
+  }
+
+  function showDropIndex(event: DragEvent<HTMLElement>, index: number) {
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = Array.from(event.dataTransfer.types).includes(PLAN_DRAG_TYPE)
+      ? "move"
+      : "copy";
+    const bounds = event.currentTarget.getBoundingClientRect();
+    setDragOver(true);
+    setDropIndex(event.clientY < bounds.top + bounds.height / 2 ? index : index + 1);
   }
 
   return (
@@ -439,11 +490,20 @@ function MealZone({
       className={`meal-zone ${CATEGORY_COLOR[category]} ${dragOver ? "drag-over" : ""}`}
       onDragOver={(event) => {
         event.preventDefault();
-        event.dataTransfer.dropEffect = "copy";
+        event.dataTransfer.dropEffect = Array.from(event.dataTransfer.types).includes(PLAN_DRAG_TYPE)
+          ? "move"
+          : "copy";
         setDragOver(true);
+        setDropIndex(foodIds.length);
       }}
-      onDragLeave={() => setDragOver(false)}
-      onDrop={drop}
+      onDragLeave={(event) => {
+        const nextTarget = event.relatedTarget as Node | null;
+        if (!nextTarget || !event.currentTarget.contains(nextTarget)) {
+          setDragOver(false);
+          setDropIndex(undefined);
+        }
+      }}
+      onDrop={(event) => drop(event, dropIndex ?? foodIds.length)}
       role="group"
       aria-label={label}
       data-testid={`meal-${dateKey(date)}-${CATEGORY_KEY[category]}`}
@@ -457,16 +517,44 @@ function MealZone({
         <div className="empty-meal" aria-hidden="true" />
       ) : (
         <div className="meal-items">
-          {foodIds.map((foodId) => {
+          {foodIds.map((foodId, index) => {
             const food = foodsById.get(foodId);
             if (!food) return null;
             return (
-              <span className="meal-chip" key={foodId}>
-                {food.name}
-                <button aria-label={`Remove ${food.name} from ${label}`} onClick={() => onRemove(foodId)}>
-                  <X size={12} />
-                </button>
-              </span>
+              <div
+                className={`meal-chip-slot ${dropIndex === index ? "insert-before" : ""} ${index === foodIds.length - 1 && dropIndex === foodIds.length ? "insert-after" : ""}`}
+                key={foodId}
+                onDragOver={(event) => showDropIndex(event, index)}
+                onDrop={(event) => {
+                  event.stopPropagation();
+                  const bounds = event.currentTarget.getBoundingClientRect();
+                  const targetIndex = event.clientY < bounds.top + bounds.height / 2
+                    ? index
+                    : index + 1;
+                  drop(event, targetIndex);
+                }}
+              >
+                <span
+                  className="meal-chip"
+                  draggable
+                  onDragStart={(event) => {
+                    event.dataTransfer.setData(PLAN_DRAG_TYPE, JSON.stringify({
+                      foodId,
+                      date: dateKey(date),
+                      category: CATEGORY_KEY[category],
+                    } satisfies PlanDragSource));
+                    event.dataTransfer.setData("text/plain", food.name);
+                    event.dataTransfer.effectAllowed = "move";
+                  }}
+                  aria-label={`Drag ${food.name} from ${label}`}
+                >
+                  <GripVertical className="meal-chip-drag-handle" size={11} aria-hidden="true" />
+                  <span className="meal-chip-name">{food.name}</span>
+                  <button aria-label={`Remove ${food.name} from ${label}`} onClick={() => onRemove(foodId)}>
+                    <X size={12} />
+                  </button>
+                </span>
+              </div>
             );
           })}
         </div>
@@ -480,12 +568,14 @@ function WeekPlanner({
   plans,
   foodsById,
   onAdd,
+  onMove,
   onRemove,
 }: {
   days: Date[];
   plans: Plans;
   foodsById: Map<string, Food>;
-  onAdd: (date: Date, category: Category, foodId: string) => void;
+  onAdd: (date: Date, category: Category, foodId: string, toIndex: number) => void;
+  onMove: (source: PlanDragSource, date: Date, category: Category, toIndex: number) => void;
   onRemove: (date: Date, category: Category, foodId: string) => void;
 }) {
   const today = dateKey(new Date());
@@ -512,7 +602,8 @@ function WeekPlanner({
                   category={category}
                   foodIds={plan[CATEGORY_KEY[category]]}
                   foodsById={foodsById}
-                  onAdd={(foodId) => onAdd(date, category, foodId)}
+                  onAdd={(foodId, toIndex) => onAdd(date, category, foodId, toIndex)}
+                  onMove={(source, toIndex) => onMove(source, date, category, toIndex)}
                   onRemove={(foodId) => onRemove(date, category, foodId)}
                 />
               ))}
@@ -958,7 +1049,7 @@ export function BentoApp({
     }
   }
 
-  function addToMeal(date: Date, category: Category, foodId: string) {
+  function addToMeal(date: Date, category: Category, foodId: string, toIndex: number) {
     const food = foodsById.get(foodId);
     if (!food) return;
     const key = dateKey(date);
@@ -966,14 +1057,45 @@ export function BentoApp({
     setPlans((current) => {
       const day = current[key] ?? emptyDay();
       if (day[mealKey].includes(foodId)) return current;
-      return { ...current, [key]: { ...day, [mealKey]: [...day[mealKey], foodId] } };
+      const nextMeal = [...day[mealKey]];
+      nextMeal.splice(Math.min(Math.max(0, toIndex), nextMeal.length), 0, foodId);
+      return { ...current, [key]: { ...day, [mealKey]: nextMeal } };
     });
-    void addPlanItemAction({ date: key, category: mealKey, foodId }).catch((error) => {
+    void addPlanItemAction({ date: key, category: mealKey, foodId, toIndex }).catch((error) => {
       setPlans((current) => {
         const day = current[key];
         if (!day) return current;
         return { ...current, [key]: { ...day, [mealKey]: day[mealKey].filter((id) => id !== foodId) } };
       });
+      notify(errorMessage(error));
+    });
+  }
+
+  function movePlannedItem(
+    source: PlanDragSource,
+    date: Date,
+    category: Category,
+    toIndex: number,
+  ) {
+    const destination = {
+      date: dateKey(date),
+      category: CATEGORY_KEY[category],
+      index: toIndex,
+    };
+    let previousPlans: Plans | undefined;
+    setPlans((current) => {
+      previousPlans = current;
+      return movePlannedFood(current, source, destination);
+    });
+    void movePlanItemAction({
+      foodId: source.foodId,
+      fromDate: source.date,
+      fromCategory: source.category,
+      toDate: destination.date,
+      toCategory: destination.category,
+      toIndex: destination.index,
+    }).catch((error) => {
+      if (previousPlans) setPlans(previousPlans);
       notify(errorMessage(error));
     });
   }
@@ -1200,6 +1322,7 @@ export function BentoApp({
               plans={plans}
               foodsById={foodsById}
               onAdd={addToMeal}
+              onMove={movePlannedItem}
               onRemove={removeFromMeal}
             />
           ) : (

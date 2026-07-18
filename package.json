@@ -10,7 +10,7 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "next typegen && tsc --noEmit",
-    "test": "node --test tests/rendered-html.test.mjs",
+    "test": "node --test tests/*.test.mjs",
     "lint": "eslint . --ignore-pattern .next --ignore-pattern dist --ignore-pattern .wrangler",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",

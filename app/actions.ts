@@ -6,6 +6,7 @@ import { z } from "zod";
 import { getDb } from "@/db";
 import { foodCategory, foodItem, mealPlanItem } from "@/db/schema";
 import { loadPlannerData } from "@/lib/planner-data";
+import { adjustedDropIndex } from "@/lib/plan-order";
 
 const CategoryKeySchema = z.enum(["breakfast", "snack", "lunch"]);
 const DateSchema = z.iso.date();
@@ -38,6 +39,19 @@ const PlanItemSchema = z.object({
   date: DateSchema,
   category: CategoryKeySchema,
   foodId: z.uuid(),
+});
+
+const AddPlanItemSchema = PlanItemSchema.extend({
+  toIndex: z.number().int().min(0).max(100).optional(),
+});
+
+const MovePlanItemSchema = z.object({
+  foodId: z.uuid(),
+  fromDate: DateSchema,
+  fromCategory: CategoryKeySchema,
+  toDate: DateSchema,
+  toCategory: CategoryKeySchema,
+  toIndex: z.number().int().min(0).max(100),
 });
 
 async function ensureCategoryExists(categoryId: string) {
@@ -244,12 +258,137 @@ export async function importFoodsAction(
   return { categories: data.categories, foods: data.foods };
 }
 
-export async function addPlanItemAction(input: z.input<typeof PlanItemSchema>) {
-  const item = PlanItemSchema.parse(input);
-  await getDb()
-    .insert(mealPlanItem)
-    .values({ planDate: item.date, category: item.category, foodId: item.foodId })
-    .onConflictDoNothing();
+export async function addPlanItemAction(input: z.input<typeof AddPlanItemSchema>) {
+  const item = AddPlanItemSchema.parse(input);
+  const db = getDb();
+  await db.transaction(async (tx) => {
+    const destination = await tx
+      .select({ id: mealPlanItem.id, foodId: mealPlanItem.foodId })
+      .from(mealPlanItem)
+      .where(
+        and(
+          eq(mealPlanItem.planDate, item.date),
+          eq(mealPlanItem.category, item.category),
+        ),
+      )
+      .orderBy(mealPlanItem.sortOrder, mealPlanItem.createdAt);
+    if (destination.some((row) => row.foodId === item.foodId)) return;
+
+    const [inserted] = await tx
+      .insert(mealPlanItem)
+      .values({
+        planDate: item.date,
+        category: item.category,
+        foodId: item.foodId,
+        sortOrder: destination.length,
+      })
+      .returning({ id: mealPlanItem.id, foodId: mealPlanItem.foodId });
+    if (!inserted) throw new Error("Bento couldn’t add that food.");
+
+    const ordered = [...destination];
+    const targetIndex = Math.min(item.toIndex ?? ordered.length, ordered.length);
+    ordered.splice(targetIndex, 0, inserted);
+    for (const [sortOrder, row] of ordered.entries()) {
+      await tx
+        .update(mealPlanItem)
+        .set({ sortOrder })
+        .where(eq(mealPlanItem.id, row.id));
+    }
+  });
+  revalidatePath("/");
+}
+
+export async function movePlanItemAction(
+  input: z.input<typeof MovePlanItemSchema>,
+) {
+  const item = MovePlanItemSchema.parse(input);
+  const db = getDb();
+
+  await db.transaction(async (tx) => {
+    const [source] = await tx
+      .select({ id: mealPlanItem.id })
+      .from(mealPlanItem)
+      .where(
+        and(
+          eq(mealPlanItem.planDate, item.fromDate),
+          eq(mealPlanItem.category, item.fromCategory),
+          eq(mealPlanItem.foodId, item.foodId),
+        ),
+      )
+      .limit(1);
+    if (!source) throw new Error("That planned food is no longer available.");
+
+    const sameMeal = item.fromDate === item.toDate
+      && item.fromCategory === item.toCategory;
+    const destination = await tx
+      .select({ id: mealPlanItem.id, foodId: mealPlanItem.foodId })
+      .from(mealPlanItem)
+      .where(
+        and(
+          eq(mealPlanItem.planDate, item.toDate),
+          eq(mealPlanItem.category, item.toCategory),
+        ),
+      )
+      .orderBy(mealPlanItem.sortOrder, mealPlanItem.createdAt);
+    const existingDestinationIndex = destination.findIndex(
+      (row) => row.foodId === item.foodId,
+    );
+
+    let movedRow: (typeof destination)[number] | undefined = destination[existingDestinationIndex];
+    if (!sameMeal) {
+      await tx.delete(mealPlanItem).where(eq(mealPlanItem.id, source.id));
+      if (!movedRow) {
+        [movedRow] = await tx
+          .insert(mealPlanItem)
+          .values({
+            planDate: item.toDate,
+            category: item.toCategory,
+            foodId: item.foodId,
+            sortOrder: destination.length,
+          })
+          .returning({ id: mealPlanItem.id, foodId: mealPlanItem.foodId });
+      }
+    } else {
+      movedRow = destination.find((row) => row.id === source.id);
+    }
+    if (!movedRow) throw new Error("Bento couldn’t move that food.");
+
+    const destinationWithoutMoved = destination.filter(
+      (row) => row.id !== movedRow.id,
+    );
+    const targetIndex = adjustedDropIndex(
+      existingDestinationIndex,
+      item.toIndex,
+      destinationWithoutMoved.length,
+    );
+    destinationWithoutMoved.splice(targetIndex, 0, movedRow);
+    for (const [sortOrder, row] of destinationWithoutMoved.entries()) {
+      await tx
+        .update(mealPlanItem)
+        .set({ sortOrder })
+        .where(eq(mealPlanItem.id, row.id));
+    }
+
+    if (!sameMeal) {
+      const sourceRemainder = await tx
+        .select({ id: mealPlanItem.id })
+        .from(mealPlanItem)
+        .where(
+          and(
+            eq(mealPlanItem.planDate, item.fromDate),
+            eq(mealPlanItem.category, item.fromCategory),
+          ),
+        )
+        .orderBy(mealPlanItem.sortOrder, mealPlanItem.createdAt);
+      for (const [sortOrder, row] of sourceRemainder.entries()) {
+        await tx
+          .update(mealPlanItem)
+          .set({ sortOrder })
+          .where(eq(mealPlanItem.id, row.id));
+      }
+    }
+  });
+
   revalidatePath("/");
 }
 

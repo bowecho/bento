@@ -64,6 +64,7 @@ export const mealPlanItem = pgTable(
     foodId: uuid("food_id")
       .notNull()
       .references(() => foodItem.id, { onDelete: "cascade" }),
+    sortOrder: integer("sort_order").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
