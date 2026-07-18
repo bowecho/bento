@@ -38,7 +38,7 @@ const GeneratedWeekSchema = z.object({
   days: z.array(GeneratedDaySchema).length(7),
 });
 
-const WEEK_GENERATION_MODEL = "google/gemini-2.5-flash-lite";
+const WEEK_GENERATION_MODEL = "google/gemini-2.5-flash";
 const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1_000;
 const RATE_LIMIT_REQUESTS = 5;
 const MAX_GENERATION_FOODS = 250;
@@ -356,7 +356,7 @@ async function generateWeekMenu(
           {
             role: "system",
             content:
-              "You plan practical children’s breakfasts, snacks, and lunches using only a supplied food library. Return only the requested structured data. Do not make medical or nutrition claims.",
+              "You plan practical children’s breakfasts, snacks, and lunches using only a supplied food library. Meal appropriateness and foods that naturally go together are more important than using every available food. Return only the requested structured data. Do not make medical or nutrition claims.",
           },
           {
             role: "user",
@@ -371,7 +371,8 @@ ${foodList}
 Rules:
 - Fill breakfast, snack, and lunch for every date.
 - Use 1 to ${maxFoodsPerMeal} ${maxFoodsPerMeal === 1 ? "food" : "foods"} per meal. Do not exceed this limit. Snacks should usually be lighter than breakfast or lunch.
-- Choose foods that make sense together as a meal based only on their names.
+- Choose foods appropriate for that meal and that make sense together based only on their names.
+- It is okay to leave some available foods unused. Prefer repeating a meal-appropriate food after a one-day gap over placing a food in an awkward meal just for coverage.
 - Never use the same food more than once on the same day.
 - Never use a food on adjacent days. A food may repeat after at least one full day in between.
 - Before planning each day, exclude every food used on the immediately preceding day.

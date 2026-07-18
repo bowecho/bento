@@ -47,7 +47,7 @@ test("Bento exposes its complete planning surface", async () => {
   assert.match(layout, /openGraph/);
   assert.match(layout, /\/og\.png/);
   assert.match(styles, /@media \(max-width: 620px\)/);
-  assert.match(actions, /google\/gemini-2\.5-flash-lite/);
+  assert.match(actions, /google\/gemini-2\.5-flash/);
   assert.match(actions, /process\.env\.OpenRouterKey/);
   assert.match(actions, /requireParameters: true/);
   assert.match(actions, /RATE_LIMIT_REQUESTS = 5/);
