@@ -1232,7 +1232,6 @@ export function BentoApp({
         <aside className="food-library">
           <div className="library-heading">
             <div>
-              <p className="eyebrow">Pack the week</p>
               <h1>Food library</h1>
             </div>
             <div className="library-heading-actions">
