@@ -459,6 +459,7 @@ function MealZone({
 }) {
   const [dragOver, setDragOver] = useState(false);
   const [dropIndex, setDropIndex] = useState<number>();
+  const [returningFoodId, setReturningFoodId] = useState<string>();
   const label = `${category} for ${date.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}`;
 
   function drop(event: DragEvent<HTMLElement>, toIndex: number) {
@@ -467,6 +468,12 @@ function MealZone({
     setDropIndex(undefined);
     const source = readPlanDrag(event);
     if (source) {
+      const sameMeal = source.date === dateKey(date)
+        && source.category === CATEGORY_KEY[category];
+      if (!sameMeal && foodIds.includes(source.foodId)) {
+        event.dataTransfer.dropEffect = "none";
+        return;
+      }
       onMove(source, toIndex);
       return;
     }
@@ -535,7 +542,7 @@ function MealZone({
                 }}
               >
                 <span
-                  className="meal-chip"
+                  className={`meal-chip ${returningFoodId === foodId ? "bounce-back" : ""}`}
                   draggable
                   onDragStart={(event) => {
                     event.dataTransfer.setData(PLAN_DRAG_TYPE, JSON.stringify({
@@ -546,6 +553,12 @@ function MealZone({
                     event.dataTransfer.setData("text/plain", food.name);
                     event.dataTransfer.effectAllowed = "move";
                   }}
+                  onDragEnd={(event) => {
+                    if (event.dataTransfer.dropEffect === "none") {
+                      setReturningFoodId(foodId);
+                    }
+                  }}
+                  onAnimationEnd={() => setReturningFoodId(undefined)}
                   aria-label={`Drag ${food.name} from ${label}`}
                 >
                   <GripVertical className="meal-chip-drag-handle" size={11} aria-hidden="true" />
@@ -1094,10 +1107,14 @@ export function BentoApp({
       toDate: destination.date,
       toCategory: destination.category,
       toIndex: destination.index,
-    }).catch((error) => {
-      if (previousPlans) setPlans(previousPlans);
-      notify(errorMessage(error));
-    });
+    })
+      .then((result) => {
+        if (!result.moved && previousPlans) setPlans(previousPlans);
+      })
+      .catch((error) => {
+        if (previousPlans) setPlans(previousPlans);
+        notify(errorMessage(error));
+      });
   }
 
   function removeFromMeal(date: Date, category: Category, foodId: string) {

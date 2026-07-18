@@ -34,7 +34,10 @@ test("Bento exposes a simple manual planning surface", async () => {
   assert.match(app, /movePlanItemAction/);
   assert.match(app, /movePlannedFood/);
   assert.match(app, /meal-chip-slot/);
-  assert.match(app, /className="meal-chip"[\s\S]*draggable/);
+  assert.match(app, /className=\{`meal-chip[\s\S]*draggable/);
+  assert.match(app, /foodIds\.includes\(source\.foodId\)/);
+  assert.match(app, /dropEffect = "none"/);
+  assert.match(app, /bounce-back/);
   assert.match(app, /createCategoryAction/);
   assert.match(app, /deleteCategoryAction/);
   assert.match(app, /createFoodAction/);
@@ -57,6 +60,7 @@ test("Bento exposes a simple manual planning surface", async () => {
   assert.match(actions, /fallbackCategoryId/);
   assert.match(actions, /requestedCategories/);
   assert.match(actions, /insert\(foodCategory\)/);
+  assert.match(actions, /!sameMeal && existingDestinationIndex >= 0/);
   assert.doesNotMatch(packageFile, /@openrouter\/sdk/);
 
   assert.match(app, /Choose theme and appearance/);

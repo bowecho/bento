@@ -40,6 +40,8 @@ export function movePlannedFood(
     ? sourceItems
     : destinationDay[destination.category];
   const existingDestinationIndex = destinationItems.indexOf(source.foodId);
+  if (!sameMeal && existingDestinationIndex >= 0) return plans;
+
   const nextDestination = destinationItems.filter((id) => id !== source.foodId);
   const targetIndex = adjustedDropIndex(
     existingDestinationIndex,

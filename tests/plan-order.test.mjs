@@ -45,7 +45,7 @@ test("moves a food to an ordered position on another day", () => {
   assert.deepEqual(result["2026-07-14"].lunch, ["beta", "alpha", "gamma"]);
 });
 
-test("removes the source when the destination already contains the food", () => {
+test("rejects a move when the destination already contains the food", () => {
   const plans = {
     "2026-07-13": day(["alpha"]),
     "2026-07-14": day([], [], ["beta", "alpha", "gamma"]),
@@ -56,6 +56,7 @@ test("removes the source when the destination already contains the food", () => 
     { date: "2026-07-14", category: "lunch", index: 3 },
   );
 
-  assert.deepEqual(result["2026-07-13"].breakfast, []);
-  assert.deepEqual(result["2026-07-14"].lunch, ["beta", "gamma", "alpha"]);
+  assert.equal(result, plans);
+  assert.deepEqual(result["2026-07-13"].breakfast, ["alpha"]);
+  assert.deepEqual(result["2026-07-14"].lunch, ["beta", "alpha", "gamma"]);
 });

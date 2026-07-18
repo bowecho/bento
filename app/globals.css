@@ -238,6 +238,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [role="button
 .meal-chip-slot.insert-before::before, .meal-chip-slot.insert-after::after { opacity: 1; transform: scaleX(1); }
 .meal-chip { min-height: 25px; border-radius: 7px; background: rgba(255,255,255,.78); box-shadow: 0 1px 3px rgba(54, 54, 48, .06); padding: 4px; display: flex; align-items: center; justify-content: space-between; gap: 3px; font-size: 9px; font-weight: 610; line-height: 1.15; cursor: grab; }
 .meal-chip:active { cursor: grabbing; }
+.meal-chip.bounce-back { animation: meal-chip-bounce-back .28s ease-out; }
+@keyframes meal-chip-bounce-back { 0% { transform: translateY(0); } 45% { transform: translateY(-5px); } 100% { transform: translateY(0); } }
 .meal-chip-drag-handle { flex: 0 0 auto; color: color-mix(in srgb, var(--muted) 65%, transparent); }
 .meal-chip-name { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; }
 .meal-chip button { flex: 0 0 auto; width: 18px; height: 18px; border: 0; border-radius: 5px; background: transparent; color: #99968e; display: grid; place-items: center; cursor: pointer; opacity: .55; }

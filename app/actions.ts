@@ -304,7 +304,7 @@ export async function movePlanItemAction(
   const item = MovePlanItemSchema.parse(input);
   const db = getDb();
 
-  await db.transaction(async (tx) => {
+  const moved = await db.transaction(async (tx) => {
     const [source] = await tx
       .select({ id: mealPlanItem.id })
       .from(mealPlanItem)
@@ -333,6 +333,7 @@ export async function movePlanItemAction(
     const existingDestinationIndex = destination.findIndex(
       (row) => row.foodId === item.foodId,
     );
+    if (!sameMeal && existingDestinationIndex >= 0) return false;
 
     let movedRow: (typeof destination)[number] | undefined = destination[existingDestinationIndex];
     if (!sameMeal) {
@@ -387,9 +388,11 @@ export async function movePlanItemAction(
           .where(eq(mealPlanItem.id, row.id));
       }
     }
+    return true;
   });
 
-  revalidatePath("/");
+  if (moved) revalidatePath("/");
+  return { moved };
 }
 
 export async function removePlanItemAction(input: z.input<typeof PlanItemSchema>) {
