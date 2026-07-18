@@ -65,7 +65,10 @@ test("Bento exposes a simple manual planning surface", async () => {
 
   assert.match(app, /Choose theme and appearance/);
   assert.match(app, /Appearance mode/);
-  assert.match(app, /Ink.*Cobalt.*Ruby.*Evergreen.*Saffron.*Amethyst.*Lagoon.*Tangerine.*Rosewood.*Iris.*Moss.*Espresso/s);
+  assert.match(app, /Ink.*Cobalt.*Ruby.*Evergreen.*Saffron.*Amethyst.*Lagoon.*Tangerine.*Rosewood.*Iris.*Moss.*Espresso.*Coastal.*Garden Party.*Twilight/s);
+  assert.match(styles, /data-palette="coastal"/);
+  assert.match(styles, /data-palette="garden"/);
+  assert.match(styles, /data-palette="twilight"/);
   assert.match(`${app}${layout}`, /bento-theme/);
   assert.match(`${app}${layout}`, /bento-color-theme/);
   assert.match(styles, /\[data-theme="dark"\]/);

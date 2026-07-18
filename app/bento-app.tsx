@@ -75,6 +75,9 @@ const COLOR_THEMES = [
   { id: "iris", name: "Iris", description: "Blue violet", swatches: ["#514fb0", "#8d8bd3", "#ececf9"] },
   { id: "moss", name: "Moss", description: "Earthy olive", swatches: ["#65752d", "#a2ad6d", "#f0f2e5"] },
   { id: "espresso", name: "Espresso", description: "Warm brown", swatches: ["#74513b", "#ad8970", "#f3ece7"] },
+  { id: "coastal", name: "Coastal", description: "Ocean, coral & sea glass", swatches: ["#2f6f8f", "#d47862", "#4a8b79"] },
+  { id: "garden", name: "Garden Party", description: "Sage, rose & goldenrod", swatches: ["#607f65", "#bd6f7d", "#c99a43"] },
+  { id: "twilight", name: "Twilight", description: "Indigo, mauve & amber", swatches: ["#565b98", "#96648d", "#c58a43"] },
 ] as const;
 
 type ColorTheme = (typeof COLOR_THEMES)[number]["id"];
