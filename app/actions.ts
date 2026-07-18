@@ -75,12 +75,16 @@ function ensureConsecutiveDates(dates: string[]) {
   }
 }
 
-function generatedWeekJsonSchema(dates: string[], foodTokens: string[]) {
+function generatedWeekJsonSchema(
+  dates: string[],
+  foodTokens: string[],
+  maxFoodsPerMeal: number,
+) {
   const meal = {
     type: "array",
     items: { type: "string", enum: foodTokens },
     minItems: 1,
-    maxItems: 3,
+    maxItems: maxFoodsPerMeal,
     uniqueItems: true,
   };
 
@@ -336,6 +340,7 @@ async function generateWeekMenu(
     foods.map((food, index) => [`food_${index + 1}`, food] as const),
   );
   const foodTokens = [...tokenToFood.keys()];
+  const maxFoodsPerMeal = Math.max(1, Math.min(3, Math.floor(foods.length / 6)));
   const foodList = [...tokenToFood.entries()]
     .map(([token, food]) => `${token}: ${food.name}`)
     .join("\n");
@@ -365,10 +370,11 @@ ${foodList}
 
 Rules:
 - Fill breakfast, snack, and lunch for every date.
-- Use 1 to 3 foods per meal. Snacks should usually be lighter than breakfast or lunch.
+- Use 1 to ${maxFoodsPerMeal} ${maxFoodsPerMeal === 1 ? "food" : "foods"} per meal. Do not exceed this limit. Snacks should usually be lighter than breakfast or lunch.
 - Choose foods that make sense together as a meal based only on their names.
 - Never use the same food more than once on the same day.
 - Never use a food on adjacent days. A food may repeat after at least one full day in between.
+- Before planning each day, exclude every food used on the immediately preceding day.
 - Favor variety across the whole week, while sensible repeats are welcome.
 - Use every supplied date exactly once and only supplied food tokens.`,
           },
@@ -378,7 +384,7 @@ Rules:
           jsonSchema: {
             name: "bento_week_menu",
             strict: true,
-            schema: generatedWeekJsonSchema(dates, foodTokens),
+            schema: generatedWeekJsonSchema(dates, foodTokens, maxFoodsPerMeal),
           },
         },
         provider: {
