@@ -213,7 +213,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [role="button
 
 .week-scroll { width: 100%; max-width: 100%; min-width: 0; overflow-x: auto; padding: 4px 3px 16px; scrollbar-color: #d7bca8 transparent; }
 .week-grid { display: grid; grid-template-columns: repeat(7, minmax(139px, 1fr)); gap: 9px; min-width: 1027px; }
-.day-card { --day-accent: var(--accent); border: 1px solid var(--line); border-top: 5px solid color-mix(in srgb, var(--accent) 18%, #ddd); background: #fff; border-radius: 18px; padding: 10px; min-width: 0; box-shadow: 4px 6px 0 rgba(0,0,0,.04), 0 11px 26px rgba(0,0,0,.045); }
+.day-card { --day-accent: var(--accent); border: 1px solid var(--line); background: #fff; border-radius: 18px; padding: 10px; min-width: 0; box-shadow: 4px 6px 0 rgba(0,0,0,.04), 0 11px 26px rgba(0,0,0,.045); }
 .day-card.today { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); border-top-color: var(--day-accent); background: #fff; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 8%, transparent), 5px 7px 0 rgba(0,0,0,.055), 0 14px 28px color-mix(in srgb, var(--accent) 7%, transparent); }
 .day-heading { display: flex; align-items: center; justify-content: space-between; min-height: 39px; padding: 0 2px 8px; }
 .day-heading > div { display: flex; align-items: baseline; gap: 6px; }
