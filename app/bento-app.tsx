@@ -12,6 +12,7 @@ import {
   Info,
   LayoutGrid,
   ListFilter,
+  LoaderCircle,
   Moon,
   Palette,
   Plus,
@@ -34,9 +35,9 @@ import {
 } from "react";
 import {
   addPlanItemAction,
-  addPlanItemsAction,
   createFoodAction,
   deleteFoodAction,
+  generateWeekMenuAction,
   importFoodsAction,
   removePlanItemAction,
   updateFoodAction,
@@ -412,14 +413,12 @@ function WeekPlanner({
   foodsById,
   onAdd,
   onRemove,
-  onGenerateDay,
 }: {
   days: Date[];
   plans: Plans;
   foodsById: Map<string, Food>;
   onAdd: (date: Date, category: Category, foodId: string) => void;
   onRemove: (date: Date, category: Category, foodId: string) => void;
-  onGenerateDay: (date: Date) => void;
 }) {
   const today = dateKey(new Date());
 
@@ -437,14 +436,6 @@ function WeekPlanner({
                   <span className="day-name">{date.toLocaleDateString("en-US", { weekday: "short" })}</span>
                   <span className="day-number">{date.getDate()}</span>
                 </div>
-                <button
-                  className="day-sparkle"
-                  onClick={() => onGenerateDay(date)}
-                  aria-label={`Generate menu for ${date.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}`}
-                  title="Generate this day"
-                >
-                  <Sparkles size={14} />
-                </button>
               </header>
               {CATEGORIES.map((category) => (
                 <MealZone
@@ -597,6 +588,8 @@ export function BentoApp({
   const [bulkOpen, setBulkOpen] = useState(false);
   const [shoppingOpen, setShoppingOpen] = useState(false);
   const [themePickerOpen, setThemePickerOpen] = useState(false);
+  const [overwriteWeekOpen, setOverwriteWeekOpen] = useState(false);
+  const [generatingWeek, setGeneratingWeek] = useState(false);
   const [displayMode, setDisplayMode] = useState<DisplayMode>(() => {
     if (typeof document === "undefined") return "light";
     return document.documentElement.dataset.theme === "dark" ? "dark" : "light";
@@ -746,92 +739,48 @@ export function BentoApp({
     });
   }
 
-  function usageInRange(foodId: string, beforeDate: Date, rangeDays: number, sourcePlans: Plans) {
-    let count = 0;
-    for (let offset = 0; offset < rangeDays; offset++) {
-      const plan = sourcePlans[dateKey(addDays(beforeDate, -offset))];
-      if (!plan) continue;
-      for (const meal of Object.values(plan)) count += meal.filter((id) => id === foodId).length;
-    }
-    return count;
+  function weekHasMeals() {
+    return weekDays.some((date) => {
+      const plan = plans[dateKey(date)];
+      return plan && Object.values(plan).some((meal) => meal.length > 0);
+    });
   }
 
-  function generatedDay(date: Date, sourcePlans: Plans) {
-    const key = dateKey(date);
-    const existing = sourcePlans[key] ?? emptyDay();
-    const targets: Record<CategoryKey, number> = { breakfast: 2, snack: 2, lunch: 3 };
-    const nextDay: DayPlan = {
-      breakfast: [...existing.breakfast],
-      snack: [...existing.snack],
-      lunch: [...existing.lunch],
-    };
-    const usedToday = new Set(Object.values(existing).flat());
+  async function generateWeek(overwrite = false) {
+    if (foods.length < 6) {
+      notify("Add at least six foods so Bento can make a varied week.");
+      return;
+    }
+    if (!overwrite && weekHasMeals()) {
+      setOverwriteWeekOpen(true);
+      return;
+    }
 
-    for (const category of CATEGORIES) {
-      const mealKey = CATEGORY_KEY[category];
-      const need = Math.max(0, targets[mealKey] - nextDay[mealKey].length);
-      if (need === 0) continue;
-      const ranked = foods
-        .filter((food) => !nextDay[mealKey].includes(food.id))
-        .map((food) => ({
-          food,
-          score:
-            usageInRange(food.id, date, 28, sourcePlans) * 12 +
-            (usedToday.has(food.id) ? 28 : 0) +
-            Math.random() * 4,
-        }))
-        .sort((a, b) => a.score - b.score)
-        .slice(0, need);
-      for (const { food } of ranked) {
-        nextDay[mealKey].push(food.id);
-        usedToday.add(food.id);
+    setGeneratingWeek(true);
+    try {
+      const dates = weekDays.map(dateKey);
+      const result = await generateWeekMenuAction({ dates, overwrite });
+      if (result.status === "needs-confirmation") {
+        setOverwriteWeekOpen(true);
+        return;
       }
-    }
-    return nextDay;
-  }
+      if (result.status === "error") {
+        notify(result.message);
+        return;
+      }
 
-  function generateDay(date: Date) {
-    if (foods.length === 0) {
-      notify("Add a few foods before generating a menu.");
-      return;
-    }
-    const key = dateKey(date);
-    const previousDay = plans[key] ?? emptyDay();
-    const nextDay = generatedDay(date, plans);
-    setPlans((current) => ({ ...current, [key]: nextDay }));
-    const items = (Object.keys(nextDay) as CategoryKey[]).flatMap((category) =>
-      nextDay[category].map((foodId) => ({ date: key, category, foodId })),
-    );
-    void addPlanItemsAction(items).catch((error) => {
-      setPlans((current) => ({ ...current, [key]: previousDay }));
+      setPlans((current) => {
+        const next = { ...current };
+        for (const date of dates) next[date] = result.plans[date] ?? emptyDay();
+        return next;
+      });
+      setOverwriteWeekOpen(false);
+      notify("Your week is ready with a varied mix.");
+    } catch (error) {
       notify(errorMessage(error));
-    });
-    notify(`Filled open spots for ${date.toLocaleDateString("en-US", { weekday: "long" })}.`);
-  }
-
-  function generateWeek() {
-    if (foods.length === 0) {
-      notify("Add a few foods before generating a week.");
-      return;
+    } finally {
+      setGeneratingWeek(false);
     }
-    const previousPlans = plans;
-    let nextPlans = { ...plans };
-    for (const date of weekDays) {
-      nextPlans = { ...nextPlans, [dateKey(date)]: generatedDay(date, nextPlans) };
-    }
-    setPlans(nextPlans);
-    const items = weekDays.flatMap((date) => {
-      const key = dateKey(date);
-      const day = nextPlans[key];
-      return (Object.keys(day) as CategoryKey[]).flatMap((category) =>
-        day[category].map((foodId) => ({ date: key, category, foodId })),
-      );
-    });
-    void addPlanItemsAction(items).catch((error) => {
-      setPlans(previousPlans);
-      notify(errorMessage(error));
-    });
-    notify("Your week is filled with a low-repeat mix.");
   }
 
   async function importFoods(text: string) {
@@ -919,9 +868,9 @@ export function BentoApp({
             <span>Shopping list</span>
             {shoppingItems.length > 0 && <b>{shoppingItems.length}</b>}
           </button>
-          <button className="button primary" onClick={generateWeek} data-testid="generate-week" aria-label="Generate week">
-            <Sparkles size={17} />
-            <span>Generate<span className="generate-week-word"> week</span></span>
+          <button className="button primary" onClick={() => void generateWeek()} disabled={generatingWeek} data-testid="generate-week" aria-label="Generate week">
+            {generatingWeek ? <LoaderCircle className="button-spinner" size={17} /> : <Sparkles size={17} />}
+            <span>{generatingWeek ? "Planning…" : <>Generate<span className="generate-week-word"> week</span></>}</span>
           </button>
         </div>
       </header>
@@ -1019,7 +968,6 @@ export function BentoApp({
               foodsById={foodsById}
               onAdd={addToMeal}
               onRemove={removeFromMeal}
-              onGenerateDay={generateDay}
             />
           ) : (
             <MonthPlanner cursor={cursor} plans={plans} foodsById={foodsById} onSelectDate={selectMonthDate} />
@@ -1074,6 +1022,19 @@ export function BentoApp({
             <button className="button secondary" onClick={() => setShoppingOpen(false)}>Close</button>
             <button className="button primary" onClick={copyShoppingList} disabled={shoppingItems.length === 0}>
               <Copy size={16} /> Copy list
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {overwriteWeekOpen && (
+        <Modal title="Replace this week?" eyebrow={niceWeekRange(weekDays)} onClose={() => !generatingWeek && setOverwriteWeekOpen(false)}>
+          <p className="delete-copy">This week already has planned foods. Generating a new week will replace everything currently in these seven days.</p>
+          <div className="modal-actions">
+            <button className="button secondary" onClick={() => setOverwriteWeekOpen(false)} disabled={generatingWeek}>Keep current plan</button>
+            <button className="button primary" onClick={() => void generateWeek(true)} disabled={generatingWeek}>
+              {generatingWeek ? <LoaderCircle className="button-spinner" size={16} /> : <Sparkles size={16} />}
+              {generatingWeek ? "Planning…" : "Generate new week"}
             </button>
           </div>
         </Modal>

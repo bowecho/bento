@@ -15,6 +15,13 @@
       "when": 1784323615190,
       "tag": "0001_colossal_katie_power",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1784336309077,
+      "tag": "0002_red_human_robot",
+      "breakpoints": true
     }
   ]
 }

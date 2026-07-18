@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   date,
   index,
+  integer,
   pgEnum,
   pgTable,
   text,
@@ -56,3 +57,11 @@ export const mealPlanItem = pgTable(
     index("meal_plan_item_food_idx").on(table.foodId),
   ],
 );
+
+export const aiGenerationRateLimit = pgTable("ai_generation_rate_limit", {
+  id: text("id").primaryKey(),
+  requestCount: integer("request_count").notNull().default(1),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});

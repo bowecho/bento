@@ -3,17 +3,21 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 test("Bento exposes its complete planning surface", async () => {
-  const [page, app, layout, styles] = await Promise.all([
+  const [page, app, layout, styles, actions, schema] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/bento-app.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+    readFile(new URL("../app/actions.ts", import.meta.url), "utf8"),
+    readFile(new URL("../db/schema.ts", import.meta.url), "utf8"),
   ]);
 
   assert.match(page, /BentoApp/);
   assert.match(page, /A happier week, one meal at a time/);
   assert.match(app, /Food library/);
   assert.match(app, /Generate week/);
+  assert.doesNotMatch(app, /Generate menu for|onGenerateDay|day-sparkle/);
+  assert.match(app, /Replace this week\?/);
   assert.match(app, /Shopping list/);
   assert.doesNotMatch(app, /Gentle guidance|variety-legend/);
   assert.match(app, /Import foods/);
@@ -43,5 +47,10 @@ test("Bento exposes its complete planning surface", async () => {
   assert.match(layout, /openGraph/);
   assert.match(layout, /\/og\.png/);
   assert.match(styles, /@media \(max-width: 620px\)/);
+  assert.match(actions, /google\/gemini-2\.5-flash-lite/);
+  assert.match(actions, /process\.env\.OpenRouterKey/);
+  assert.match(actions, /requireParameters: true/);
+  assert.match(actions, /RATE_LIMIT_REQUESTS = 5/);
+  assert.match(schema, /ai_generation_rate_limit/);
   assert.doesNotMatch(`${page}${app}${layout}`, /codex-preview|Your site is taking shape|react-loading-skeleton/i);
 });
