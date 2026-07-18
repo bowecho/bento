@@ -1,15 +1,17 @@
-import type { FoodCategory } from "@/lib/food-categories";
-
 export const CATEGORIES = ["Breakfast", "Snack", "Lunch"] as const;
 export type Category = (typeof CATEGORIES)[number];
 export type CategoryKey = "breakfast" | "snack" | "lunch";
 
+export type FoodCategory = {
+  id: string;
+  name: string;
+  createdAt: number;
+};
+
 export type Food = {
   id: string;
   name: string;
-  category: FoodCategory;
-  pairsWellWithIds: string[];
-  avoidPairingWithIds: string[];
+  categoryId: string;
   createdAt: number;
 };
 

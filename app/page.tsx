@@ -5,12 +5,12 @@ import { loadPlannerData } from "@/lib/planner-data";
 export const metadata: Metadata = {
   title: "Bento — A happier week, one meal at a time",
   description:
-    "Plan breakfast, snacks, and lunch with simple food building blocks and gentle variety guidance.",
+    "Plan breakfast, snacks, and lunch with simple food building blocks.",
 };
 
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
-  const { foods, plans } = await loadPlannerData();
-  return <BentoApp initialFoods={foods} initialPlans={plans} />;
+  const { categories, foods, plans } = await loadPlannerData();
+  return <BentoApp initialCategories={categories} initialFoods={foods} initialPlans={plans} />;
 }

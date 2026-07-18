@@ -14,12 +14,11 @@
     "lint": "eslint . --ignore-pattern .next --ignore-pattern dist --ignore-pattern .wrangler",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:seed-foods": "node scripts/seed-foods.mjs",
+    "db:reset": "node scripts/reset-data.mjs",
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
-    "@openrouter/sdk": "^0.13.65",
     "drizzle-orm": "^0.45.2",
     "geist": "^1.7.2",
     "lucide-react": "^1.25.0",

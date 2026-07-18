@@ -1,9 +1,10 @@
 import { asc } from "drizzle-orm";
 import { getDb } from "@/db";
-import { foodItem, foodRelationship, mealPlanItem } from "@/db/schema";
+import { foodCategory, foodItem, mealPlanItem } from "@/db/schema";
 import {
   type DayPlan,
   type Food,
+  type FoodCategory,
   type Plans,
 } from "@/lib/planner-types";
 
@@ -13,9 +14,9 @@ function emptyDay(): DayPlan {
 
 export async function loadPlannerData() {
   const db = getDb();
-  const [foodRows, relationshipRows, planRows] = await Promise.all([
+  const [categoryRows, foodRows, planRows] = await Promise.all([
+    db.select().from(foodCategory).orderBy(asc(foodCategory.sortOrder), asc(foodCategory.name)),
     db.select().from(foodItem).orderBy(asc(foodItem.name)),
-    db.select().from(foodRelationship),
     db
       .select()
       .from(mealPlanItem)
@@ -26,21 +27,16 @@ export async function loadPlannerData() {
       ),
   ]);
 
-  const pairIds = new Map<string, string[]>();
-  const avoidIds = new Map<string, string[]>();
-  for (const relationship of relationshipRows) {
-    const collection = relationship.kind === "pairs_well" ? pairIds : avoidIds;
-    const current = collection.get(relationship.sourceFoodId) ?? [];
-    current.push(relationship.targetFoodId);
-    collection.set(relationship.sourceFoodId, current);
-  }
+  const categories: FoodCategory[] = categoryRows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    createdAt: row.createdAt.getTime(),
+  }));
 
   const foods: Food[] = foodRows.map((row) => ({
     id: row.id,
     name: row.name,
-    category: row.category,
-    pairsWellWithIds: pairIds.get(row.id) ?? [],
-    avoidPairingWithIds: avoidIds.get(row.id) ?? [],
+    categoryId: row.categoryId,
     createdAt: row.createdAt.getTime(),
   }));
 
@@ -51,5 +47,5 @@ export async function loadPlannerData() {
     plans[row.planDate] = day;
   }
 
-  return { foods, plans };
+  return { categories, foods, plans };
 }

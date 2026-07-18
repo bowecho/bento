@@ -36,6 +36,13 @@
       "when": 1784339452220,
       "tag": "0004_blue_cable",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1784388608107,
+      "tag": "0005_yummy_barracuda",
+      "breakpoints": true
     }
   ]
 }
